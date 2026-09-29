@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gold Chart, XAU/USD one year, all timeframes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+ --bg:#0E131A;--panel:#151C25;--line:#243040;--ink:#E6ECF3;--mut:#8B99AB;--acc:#E9B930;--up:#26A69A;--dn:#EF5350;
+ --body:"IBM Plex Sans",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#F3F5F8;--panel:#FFFFFF;--line:#D9E0E8;--ink:#16202C;--mut:#5C6B7C}}
+:root[data-theme="light"]{--bg:#F3F5F8;--panel:#FFFFFF;--line:#D9E0E8;--ink:#16202C;--mut:#5C6B7C}
+html,body{height:100%}*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);display:flex;flex-direction:column;overflow:hidden}
+header,.bar{display:flex;align-items:center;gap:8px;padding:3px 8px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap;font-size:13px;color:var(--mut)}
+header{padding:4px 8px}
+.sym{font-weight:600;font-size:14px;color:var(--ink)}.sym small{color:var(--mut);font-weight:400;margin-left:8px;font-size:12px}
+.tfs,.seg{display:flex;gap:2px;flex-wrap:wrap}
+.tfs button,.seg button{background:none;border:1px solid transparent;color:var(--mut);font:500 12.5px var(--body);padding:3px 7px;border-radius:4px;cursor:pointer}
+.tfs button:hover,.seg button:hover{color:var(--ink);border-color:var(--line)}.tfs button.on,.seg button.on{color:var(--acc);background:rgba(233,185,48,.12)}
+.sp{flex:1}.sep{width:1px;height:18px;background:var(--line)}
+.rl{color:var(--acc);font-weight:600}
+input[type=date],input[type=datetime-local],input[type=password],select,.btn,button.b{background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:4px;padding:2px 7px;font:12.5px var(--body);cursor:pointer;line-height:1.5}
+input[type=file]{display:none}
+label{display:flex;align-items:center;gap:5px;cursor:pointer}
+.bar[hidden]{display:none}
+.now{font-family:var(--mono);color:var(--ink)}
+.hint{font-size:12px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--mut);margin-right:4px;vertical-align:1px}.dot.on{background:var(--up)}.dot.err{background:var(--dn)}
+#rpPlay.playing{color:var(--acc);border-color:var(--acc)}
+#wrap{flex:1;display:flex;min-height:0;position:relative}
+#panes{flex:1;display:grid;gap:4px;background:var(--line);min-width:0;position:relative}
+.split{position:absolute;z-index:6;background:transparent}.split.v{top:0;bottom:0;width:10px;margin-left:-5px;cursor:col-resize}.split.h{left:0;right:0;height:10px;margin-top:-5px;cursor:row-resize}.split:hover,.split.on{background:rgba(233,185,48,.35)}
+#panes.l1{grid-template-columns:1fr}#panes.l2{grid-template-columns:1fr 1fr}#panes.l4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+.pane{position:relative;min-width:0;min-height:0;background:var(--bg);outline:2px solid transparent;outline-offset:-2px}
+.pane.active{outline-color:rgba(233,185,48,.55)}
+.pane .ch{position:absolute;inset:0}
+.pane canvas.ov{position:absolute;inset:0;pointer-events:none;width:100%;height:100%;z-index:3}
+body.drawing .pane canvas.ov{pointer-events:auto;cursor:crosshair}body.drawing.erase .pane canvas.ov{cursor:not-allowed}
+input[type=color]{width:28px;height:24px;padding:0;border:1px solid var(--line);background:none;border-radius:4px;cursor:pointer}
+.pane .lg{position:absolute;top:6px;left:10px;z-index:4;font:12px var(--mono);color:var(--ink);pointer-events:none;background:color-mix(in srgb,var(--panel) 75%,transparent);padding:3px 7px;border-radius:4px;line-height:1.5}
+.pane .lg b{color:var(--mut);font-weight:400}.pane .lg .tfl{color:var(--acc);font-weight:600;margin-right:6px}.pane .lg .u{color:var(--up)}.pane .lg .d{color:var(--dn)}
+#drawer{width:400px;max-width:60vw;border-left:1px solid var(--line);background:var(--panel);overflow:auto;font-size:12.5px;display:flex;flex-direction:column}
+#drawer[hidden]{display:none}
+#drawer .dh{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
+#drawer .dh button{background:none;border:none;color:var(--mut);font-size:18px;cursor:pointer}
+#stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px 10px;padding:10px 12px;border-bottom:1px solid var(--line)}
+#stats div{display:flex;flex-direction:column}#stats b{font-family:var(--mono);font-size:14px}#stats span{color:var(--mut);font-size:11px}
+#rules{padding:10px 12px;color:var(--mut);border-bottom:1px solid var(--line);line-height:1.45}#rules p{margin:0 0 6px}
+#ttab{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:11.5px}
+#ttab th{text-align:left;color:var(--mut);font-weight:500;padding:6px 6px;position:sticky;top:41px;background:var(--panel);border-bottom:1px solid var(--line)}
+#ttab td{padding:5px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+#ttab tr{cursor:pointer}#ttab tbody tr:hover{background:var(--bg)}#ttab .w{color:var(--up)}#ttab .l{color:var(--dn)}
+@media (max-width:700px){#drawer{position:absolute;right:0;top:0;bottom:0;z-index:5;max-width:92vw}#panes.l2,#panes.l4{grid-template-columns:1fr;grid-template-rows:none}}
+.dd{position:relative}.pop{position:absolute;top:100%;left:0;z-index:30;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px 12px;display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12.5px;color:var(--mut);min-width:340px;box-shadow:0 8px 24px rgba(0,0,0,.25)}.pop[hidden]{display:none}.pop .sep{display:none}.pop>span{grid-column:1/-1;color:var(--acc);font-weight:600;margin-top:4px}
+body.focus header,body.focus #toolrow,body.focus footer{display:none}body.focus #exitFocus{display:flex}
+#exitFocus{display:none;position:fixed;top:6px;right:80px;z-index:40}
+#load{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--mut);font-size:14px;background:var(--bg)}
+#load .pb{width:220px;height:4px;background:var(--line);border-radius:2px;overflow:hidden}#load .pb i{display:block;height:100%;width:30%;background:var(--acc);animation:sl 1s linear infinite}
+@keyframes sl{from{transform:translateX(-100%)}to{transform:translateX(330%)}}
+footer[hidden]{display:none}
+footer{font-size:11.5px;color:var(--mut);padding:5px 12px;border-top:1px solid var(--line);background:var(--panel);display:flex;gap:16px;flex-wrap:wrap}
+kbd{font:11px var(--mono);border:1px solid var(--line);border-radius:3px;padding:0 4px}
+</style>
+</head>
+<body>
+<header>
+  <div class="sym">XAU/USD<small id="range">spot gold, Dukascopy</small></div>
+  <div class="tfs" id="tfs"></div>
+  <div class="sp"></div>
+  <span>Layout</span><div class="seg" id="layout"><button data-n="1" class="on">1</button><button data-n="2">2</button><button data-n="4">4</button></div>
+  <label class="btn">Load CSV<input type="file" id="file" accept=".csv" multiple></label>
+  <button class="b" id="replayBtn" type="button">Replay</button>
+  <button class="b" id="liveBtn" type="button"><span id="dot" class="dot"></span> Live</button>
+  <button class="b" id="tradesBtn" type="button">Trades</button>
+  <button class="b" id="themeBtn" type="button" title="Theme: auto / dark / light">◐ Auto</button>
+</header>
+<div class="bar" id="toolrow">
+  <div class="dd"><button class="b" id="layersBtn" type="button">Layers ▾</button>
+    <div class="pop" id="layersPop" hidden>
+  <label><input type="checkbox" id="lyAll" checked> all</label><span class="sep"></span>
+  <label><input type="checkbox" class="ly" id="showBoxes" checked> trades</label>
+  <label><input type="checkbox" class="ly" id="lyAsia" checked> Asia</label>
+  <label><input type="checkbox" class="ly" id="lyLondon" checked> London</label>
+  <label><input type="checkbox" class="ly" id="lyNY" checked> New York</label>
+  <label><input type="checkbox" class="ly" id="lyLunch" checked> NY lunch (no trade)</label>
+  <label><input type="checkbox" class="ly" id="lyPD" checked> prev day H/L</label>
+  <label><input type="checkbox" class="ly" id="lyMid" checked> midnight NY</label>
+  <label><input type="checkbox" class="ly" id="lyClock" checked> clock findings</label><span class="sep"></span>
+  <span>Camarilla</span>
+  <label><input type="checkbox" class="ly" id="lyCamD" checked> daily</label>
+  <label><input type="checkbox" class="ly" id="lyCamW"> weekly</label>
+  <label><input type="checkbox" class="ly" id="lyCamM"> monthly</label>
+  </div></div>
+  <span class="sep"></span>
+  <div class="seg" id="tools"><button data-tool="cursor" class="on" title="Cursor (Esc)">✥</button><button data-tool="line" title="Trend line: drag">╱</button><button data-tool="hline" title="Horizontal line: click">—</button><button data-tool="rect" title="Area: drag">▭</button><button data-tool="erase" title="Click a drawing to remove it">⌫</button></div>
+  <input type="color" id="drawColor" value="#E9B930" title="Drawing colour">
+  <button class="b" id="drawClear" type="button" title="Remove all drawings">Clear</button>
+  <span class="sp"></span>
+  <span id="tzSpan">Time zone <select id="tz">
+    <option value="Asia/Kolkata">India (IST)</option><option value="America/New_York">New York</option><option value="Europe/London">London</option><option value="UTC">UTC</option>
+    <option value="Asia/Dubai">Dubai</option><option value="Asia/Singapore">Singapore</option><option value="Asia/Tokyo">Tokyo</option><option value="Australia/Sydney">Sydney</option></select></span>
+  <span>Go to <input type="date" id="goto" min="2025-09-25" max="2026-09-26"></span>
+  <button class="b" id="latest" type="button">Latest</button>
+  <button class="b" id="helpBtn" type="button" title="Show help">?</button>
+  <button class="b" id="fullBtn" type="button" title="Full screen with all controls (F). Shift+F hides the toolbars too">⛶ Full</button>
+</div>
+<div class="bar" id="rp" hidden>
+  <span class="rl">Replay</span>
+  <label>Start <input type="datetime-local" id="rpStart" step="60"></label>
+  <button class="b" id="rpGo" type="button">Set</button>
+  <span class="sep"></span>
+  <button class="b" id="rpBack" type="button" title="Step back one bar">◀</button>
+  <button class="b" id="rpPlay" type="button" title="Play / pause (space)">▶</button>
+  <button class="b" id="rpStep" type="button" title="Step forward one bar (→)">▶|</button>
+  <label>Speed <select id="rpSpeed"><option value="1">1 bar/s</option><option value="2" selected>2 bars/s</option><option value="5">5 bars/s</option><option value="10">10 bars/s</option><option value="30">30 bars/s</option></select></label>
+  <span class="sep"></span><span id="rpNow" class="now">not started</span>
+  <span class="hint">steps in the selected pane's timeframe</span>
+  <span class="sp"></span><button class="b" id="rpExit" type="button">Exit replay</button>
+</div>
+<div class="bar" id="lv" hidden>
+  <span class="rl">Live via Finnhub</span>
+  <label>API key <input type="password" id="fhKey" placeholder="paste your free Finnhub key" size="34" autocomplete="off"></label>
+  <button class="b" id="fhConnect" type="button">Connect</button>
+  <button class="b" id="fhDisconnect" type="button">Disconnect</button>
+  <span class="sep"></span><span id="fhStatus" class="now">not connected</span>
+  <span class="sp"></span>
+  <label>Twelve Data key <input type="password" id="tdKey" placeholder="for filling gaps (free key)" size="22" autocomplete="off"></label>
+  <button class="b" id="tdFill" type="button" title="Fetch missing 1-minute candles from Twelve Data up to now">Fill gap</button>
+  <button class="b" id="saveData" type="button" title="Download all 1-minute candles (built-in + live + filled) as CSV">Save data</button>
+  <span class="hint">Keys stay in this browser. Live candles are stored here too, so they survive a refresh.</span>
+</div>
+<div id="wrap">
+  <div id="panes" class="l1"></div>
+  <aside id="drawer" hidden>
+    <div class="dh"><b>My gold trades</b><span class="sp"></span><button id="drawerClose" type="button">×</button></div>
+    <div id="stats"></div><div id="rules"></div>
+    <table id="ttab"><thead><tr><th>Entry (NY)</th><th>Sym</th><th>Dir</th><th>In</th><th>Out</th><th>oz</th><th>Hold</th><th>P/L</th><th>Cum</th></tr></thead><tbody></tbody></table>
+  </aside>
+  <div id="load"><div>Loading 1-minute candles from data/XAUUSD_1m.csv</div><div class="pb"><i></i></div></div>
+</div>
+<div id="err" hidden style="position:fixed;bottom:60px;left:12px;z-index:50;background:var(--dn);color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;max-width:60ch"></div>
+<button class="b" id="exitFocus" type="button">Show toolbars (Esc)</button>
+<footer hidden>
+  <span>Scroll to zoom, drag to pan, <kbd>shift</kbd>+scroll to pan. Double-click a price axis to reset it. <kbd>↑</kbd>/<kbd>↓</kbd> change the selected pane's timeframe.</span>
+  <span>Sessions are fixed in New York time (Asia 20:00–00:00, London 02:00–05:00, New York 07:00–10:00, lunch 12:00–13:00) and shown in your chosen zone. Daily bars open 17:00 NY, weekly Sunday 17:00 NY.</span>
+  <span>Camarilla pivots use the previous day (17:00–17:00 NY), previous week (Sun 17:00–Fri 17:00 NY) or previous calendar month. H3/L3, H4/L4 and H5/L5 are solid, H1/H2/L1/L2 dashed, P (pivot) and CP (previous close) dotted.</span>
+  <span>Clock findings (from one year of data): red bands lean down, green leans up, gold = the 9–11 am window where the day's high or low is most often set. Details in gold-daily-clock.html.</span>
+  <span>Trades: box from entry to exit, green = profit, red = loss, triangle = entry, dot = exit. Table times are New York.</span>
+  <span>Replay: <kbd>space</kbd> play/pause, <kbd>→</kbd> step, <kbd>←</kbd> back.</span>
+</footer>
+<script>const DATA_URL="data/XAUUSD_1m.csv";</script>
+<script>
+window.addEventListener("error",e=>{const d=document.getElementById("err"); if(!d) return; d.hidden=false; d.textContent="Error: "+(e.message||"unknown")+(e.filename?" ("+e.filename.split("/").pop()+":"+e.lineno+")":""); setTimeout(()=>d.hidden=true,8000);});
+(async function(){
+const TFS=[["1m",60],["2m",120],["3m",180],["5m",300],["15m",900],["1h",3600],["2h",7200],["4h",14400],["1D",86400],["Midnight",-1],["1W",604800]];
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+let m1=[], cache={}, loaded={};
+const secOf=tf=>Math.max(60,TFS.find(x=>x[0]===tf)[1]);
+
+/* ---------- time zones: data is New York wall-clock; display shifts it ---------- */
+const fmts={};
+function zoneOff(tz,u){ // seconds to add to a real unix instant u to get that zone's wall-clock "as UTC"
+  const key=tz+"|"+Math.floor(u/3600); if(fmts[key]!==undefined) return fmts[key];
+  const f=fmts["f"+tz]||(fmts["f"+tz]=new Intl.DateTimeFormat("en-US",{timeZone:tz,hour12:false,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}));
+  const hh=Math.floor(u/3600)*3600;
+  const p=Object.fromEntries(f.formatToParts(new Date(hh*1000)).map(x=>[x.type,x.value]));
+  const w=Date.UTC(+p.year,+p.month-1,+p.day,+p.hour%24,+p.minute)/1000;
+  return fmts[key]=w-hh;
+}
+let TZ="Asia/Kolkata"; try{TZ=localStorage.getItem("tz")||TZ;}catch(e){}
+$("#tz").value=TZ;
+const nyToUtc=t=>t-zoneOff("America/New_York",t+5*3600);           // NY wall-clock -> instant
+const utcToNy=u=>u+zoneOff("America/New_York",u);
+const shift=t=>{ if(TZ==="America/New_York") return t; const u=nyToUtc(t); return u+zoneOff(TZ,u); };   // NY wall-clock -> display wall-clock
+const unshift=d=>{ if(TZ==="America/New_York") return d; const u=d-zoneOff(TZ,d-zoneOff(TZ,d)); return utcToNy(u); };
+const disp=(b,tf)=>({time:(tf&&secOf(tf)>=86400)?b.time:shift(b.time),open:b.open,high:b.high,low:b.low,close:b.close});
+const fmt=t=>new Date(t*1000).toISOString().slice(0,16).replace("T"," ");
+
+/* ---------- data ---------- */
+function parseCSV(text){
+  const lines=text.split("\n"); const out=[];
+  for(let i=1;i<lines.length;i++){const L=lines[i]; if(L.length<20) continue;
+    const c=L.indexOf(","); const ts=L.slice(0,c); const r=L.slice(c+1).split(",");
+    const t=Date.UTC(+ts.slice(0,4),+ts.slice(5,7)-1,+ts.slice(8,10),+ts.slice(11,13)||0,+ts.slice(14,16)||0)/1000;
+    out.push({time:t,open:+r[0],high:+r[1],low:+r[2],close:+r[3]});}
+  return out;
+}
+async function unpack(){ return ""; }
+function bucketFn(tf){
+  const sec=TFS.find(x=>x[0]===tf)[1];
+  if(tf==="Midnight") return t=>Math.floor(t/86400)*86400;
+  if(tf==="1D") return t=>Math.floor((t+7*3600)/86400)*86400;
+  if(tf==="1W") return t=>{const s=t+7*3600-4*86400; return Math.floor(s/604800)*604800+4*86400;};
+  if(tf==="2h"||tf==="4h") return t=>Math.floor((t-17*3600)/sec)*sec+17*3600;
+  return t=>Math.floor(t/sec)*sec;
+}
+function resample(tf,src){
+  const arr=src||m1; if(tf==="1m") return arr; if(!src&&cache[tf]) return cache[tf];
+  const f=bucketFn(tf), out=[]; let b=null;
+  for(const r of arr){const k=f(r.time);
+    if(!b||b.time!==k){b={time:k,open:r.open,high:r.high,low:r.low,close:r.close};out.push(b);}
+    else{if(r.high>b.high)b.high=r.high;if(r.low<b.low)b.low=r.low;b.close=r.close;}}
+  if(src) return out; return cache[tf]=out;
+}
+
+/* ---------- trades ---------- */
+const TR={"source": "Delta Exchange ledger", "funding": 0.87, "fee_rate": 0.0001, "trades": [{"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-06-25 10:34:47", "exit_time": "2026-06-25 10:36:18", "entry": 4025.18, "exit": 4021.64, "notional": 3822.0, "oz": 0.949, "gross": -4.49, "fees": 0.9, "pnl": -5.39, "cum": -5.39, "partials": [["2026-06-25 10:36:18", 4021.64, -4.49]], "hold_min": 1}, {"sym": "XAUTUSD", "dir": "short", "entry_time": "2026-07-27 09:17:44", "exit_time": "2026-07-27 11:13:09", "entry": 4082.11, "exit": 4074.3, "notional": 12612.0, "oz": 3.09, "gross": 13.35, "fees": 2.97, "pnl": 10.37, "cum": 4.98, "partials": [["2026-07-27 11:13:09", 4074.3, 13.35]], "hold_min": 115}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-07-28 07:00:15", "exit_time": "2026-07-28 08:48:22", "entry": 4027.66, "exit": 4035.47, "notional": 6233.0, "oz": 1.548, "gross": 10.3, "fees": 1.47, "pnl": 8.83, "cum": 13.81, "partials": [["2026-07-28 08:48:22", 4035.47, 10.3]], "hold_min": 108}, {"sym": "XAUTUSD", "dir": "short", "entry_time": "2026-07-29 15:56:37", "exit_time": "2026-07-29 16:01:09", "entry": 4053.2, "exit": 4049.43, "notional": 7679.0, "oz": 1.894, "gross": 9.26, "fees": 1.81, "pnl": 7.45, "cum": 21.26, "partials": [["2026-07-29 16:01:09", 4049.43, 9.26]], "hold_min": 4}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-07-30 11:15:03", "exit_time": "2026-07-30 11:17:06", "entry": 4090.82, "exit": 4093.18, "notional": 4276.0, "oz": 1.045, "gross": 4.32, "fees": 1.01, "pnl": 3.31, "cum": 24.57, "partials": [["2026-07-30 11:17:06", 4093.18, 4.32]], "hold_min": 2}, {"sym": "XAUTUSD", "dir": "short", "entry_time": "2026-07-31 04:34:32", "exit_time": "2026-07-31 04:48:17", "entry": 4057.11, "exit": 4061.22, "notional": 4053.0, "oz": 0.999, "gross": -7.5, "fees": 0.96, "pnl": -8.45, "cum": 16.11, "partials": [["2026-07-31 04:48:17", 4061.22, -7.5]], "hold_min": 13}, {"sym": "XAUTUSD", "dir": "short", "entry_time": "2026-07-31 10:06:50", "exit_time": "2026-07-31 10:15:04", "entry": 4028.36, "exit": 4031.55, "notional": 7256.0, "oz": 1.801, "gross": -9.06, "fees": 1.71, "pnl": -10.77, "cum": 5.34, "partials": [["2026-07-31 10:15:04", 4031.55, -9.06]], "hold_min": 8}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-07-31 10:15:59", "exit_time": "2026-07-31 14:02:43", "entry": 4031.55, "exit": 4053.64, "notional": 7266.0, "oz": 1.802, "gross": 30.08, "fees": 1.72, "pnl": 28.37, "cum": 33.71, "partials": [["2026-07-31 14:02:43", 4053.64, 30.08]], "hold_min": 226}, {"sym": "XAUTUSD", "dir": "short", "entry_time": "2026-08-04 10:25:36", "exit_time": "2026-08-04 13:03:37", "entry": 4081.8, "exit": 4099.28, "notional": 8144.0, "oz": 1.995, "gross": -34.35, "fees": 1.93, "pnl": -36.28, "cum": -2.57, "partials": [["2026-08-04 13:03:37", 4099.28, -34.35]], "hold_min": 158}, {"sym": "XAUTUSD", "dir": "short", "entry_time": "2026-08-04 14:21:10", "exit_time": "2026-08-04 17:18:40", "entry": 4086.47, "exit": 4077.49, "notional": 8153.0, "oz": 1.995, "gross": 6.58, "fees": 1.92, "pnl": 4.66, "cum": 2.09, "partials": [["2026-08-04 17:18:40", 4077.49, 6.58]], "hold_min": 177}, {"sym": "XAUTUSD", "dir": "short", "entry_time": "2026-08-05 03:21:12", "exit_time": "2026-08-05 05:39:00", "entry": 4168.18, "exit": 4157.47, "notional": 6226.0, "oz": 1.494, "gross": 10.2, "fees": 1.47, "pnl": 8.73, "cum": 10.82, "partials": [["2026-08-05 05:39:00", 4157.47, 10.2]], "hold_min": 137}, {"sym": "XAUTUSD", "dir": "short", "entry_time": "2026-08-05 09:05:29", "exit_time": "2026-08-05 09:22:46", "entry": 4194.95, "exit": 4196.35, "notional": 6268.0, "oz": 1.494, "gross": -8.33, "fees": 1.48, "pnl": -9.81, "cum": 1.01, "partials": [["2026-08-05 09:22:46", 4196.35, -8.33]], "hold_min": 17}, {"sym": "XAUTUSD", "dir": "short", "entry_time": "2026-08-05 11:18:28", "exit_time": "2026-08-05 11:22:57", "entry": 4252.98, "exit": 4261.31, "notional": 8466.0, "oz": 1.991, "gross": -18.65, "fees": 2.0, "pnl": -20.65, "cum": -19.64, "partials": [["2026-08-05 11:22:57", 4261.31, -18.65]], "hold_min": 4}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-08-05 11:48:53", "exit_time": "2026-08-05 11:50:10", "entry": 4253.01, "exit": 4245.69, "notional": 4233.0, "oz": 0.995, "gross": -3.28, "fees": 1.0, "pnl": -4.28, "cum": -23.92, "partials": [["2026-08-05 11:50:10", 4245.69, -3.28]], "hold_min": 1}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-08-05 12:09:35", "exit_time": "2026-08-05 12:31:24", "entry": 4235.32, "exit": 4239.94, "notional": 8433.0, "oz": 1.991, "gross": 11.19, "fees": 1.99, "pnl": 9.19, "cum": -14.73, "partials": [["2026-08-05 12:31:24", 4239.94, 11.19]], "hold_min": 21}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-08-05 12:37:07", "exit_time": "2026-08-05 12:43:45", "entry": 4244.19, "exit": 4244.94, "notional": 8453.0, "oz": 1.992, "gross": 0.97, "fees": 1.99, "pnl": -1.03, "cum": -15.75, "partials": [["2026-08-05 12:43:45", 4244.94, 0.97]], "hold_min": 6}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-08-06 10:36:25", "exit_time": "2026-08-06 10:49:46", "entry": 4272.19, "exit": 4265.07, "notional": 6384.0, "oz": 1.494, "gross": -10.94, "fees": 1.51, "pnl": -12.45, "cum": -28.2, "partials": [["2026-08-06 10:49:46", 4265.07, -10.94]], "hold_min": 13}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-08-06 12:39:41", "exit_time": "2026-08-06 14:37:28", "entry": 4234.94, "exit": 4243.49, "notional": 4223.0, "oz": 0.997, "gross": 6.99, "fees": 1.0, "pnl": 6.0, "cum": -22.2, "partials": [["2026-08-06 14:37:28", 4243.49, 6.99]], "hold_min": 117}, {"sym": "XAUTUSD", "dir": "short", "entry_time": "2026-08-10 05:18:48", "exit_time": "2026-08-10 07:30:17", "entry": 4347.78, "exit": 4335.06, "notional": 8662.0, "oz": 1.992, "gross": 25.35, "fees": 2.04, "pnl": 23.31, "cum": 1.11, "partials": [["2026-08-10 07:30:17", 4335.06, 25.35]], "hold_min": 131}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-08-11 02:03:03", "exit_time": "2026-08-11 02:11:46", "entry": 4379.72, "exit": 4381.02, "notional": 4365.0, "oz": 0.997, "gross": 1.28, "fees": 1.03, "pnl": 0.25, "cum": 1.36, "partials": [["2026-08-11 02:11:46", 4381.02, 1.28]], "hold_min": 8}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-08-11 02:36:48", "exit_time": "2026-08-11 02:41:43", "entry": 4365.23, "exit": 4367.24, "notional": 8701.0, "oz": 1.993, "gross": 5.51, "fees": 2.05, "pnl": 3.45, "cum": 4.82, "partials": [["2026-08-11 02:41:43", 4367.24, 5.51]], "hold_min": 4}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-08-11 05:34:33", "exit_time": "2026-08-11 05:55:13", "entry": 4373.52, "exit": 4371.19, "notional": 8722.0, "oz": 1.994, "gross": -3.1, "fees": 2.06, "pnl": -5.16, "cum": -0.34, "partials": [["2026-08-11 05:55:13", 4371.19, -3.1]], "hold_min": 20}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-08-11 14:19:38", "exit_time": "2026-08-11 14:29:55", "entry": 4366.6, "exit": 4361.12, "notional": 6529.0, "oz": 1.495, "gross": -10.36, "fees": 1.54, "pnl": -11.9, "cum": -12.24, "partials": [["2026-08-11 14:29:55", 4361.12, -10.36]], "hold_min": 10}, {"sym": "XAUTUSD", "dir": "short", "entry_time": "2026-08-12 05:30:20", "exit_time": "2026-08-12 07:20:34", "entry": 4413.31, "exit": 4410.34, "notional": 8796.0, "oz": 1.993, "gross": 8.03, "fees": 2.07, "pnl": 5.95, "cum": -6.29, "partials": [["2026-08-12 07:20:34", 4410.34, 8.03]], "hold_min": 110}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-08-12 13:29:20", "exit_time": "2026-08-12 13:55:04", "entry": 4406.4, "exit": 4399.66, "notional": 8785.0, "oz": 1.994, "gross": -19.77, "fees": 2.07, "pnl": -21.84, "cum": -28.13, "partials": [["2026-08-12 13:55:04", 4399.66, -19.77]], "hold_min": 25}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-08-13 03:07:23", "exit_time": "2026-08-13 06:41:57", "entry": 4379.27, "exit": 4388.35, "notional": 8712.0, "oz": 1.989, "gross": 21.43, "fees": 2.06, "pnl": 19.37, "cum": -8.76, "partials": [["2026-08-13 06:41:57", 4388.35, 21.43]], "hold_min": 214}, {"sym": "XAUTUSD", "dir": "short", "entry_time": "2026-08-14 08:36:05", "exit_time": "2026-08-14 09:35:12", "entry": 4378.56, "exit": 4392.23, "notional": 8732.0, "oz": 1.994, "gross": -19.34, "fees": 2.06, "pnl": -21.4, "cum": -30.17, "partials": [["2026-08-14 09:35:12", 4392.23, -19.34]], "hold_min": 59}, {"sym": "XAUTUSD", "dir": "short", "entry_time": "2026-08-14 09:55:24", "exit_time": "2026-08-14 10:11:47", "entry": 4385.45, "exit": 4389.76, "notional": 8298.0, "oz": 1.892, "gross": -12.57, "fees": 1.96, "pnl": -14.53, "cum": -44.69, "partials": [["2026-08-14 10:11:47", 4389.76, -12.57]], "hold_min": 16}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-08-17 09:04:06", "exit_time": "2026-08-17 10:03:21", "entry": 4384.59, "exit": 4407.7, "notional": 3934.0, "oz": 0.897, "gross": 15.7, "fees": 0.93, "pnl": 14.77, "cum": -29.92, "partials": [["2026-08-17 09:55:56", 4405.32, 7.87], ["2026-08-17 10:03:21", 4407.7, 7.83]], "hold_min": 59}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-08-18 04:59:34", "exit_time": "2026-08-18 07:26:10", "entry": 4393.14, "exit": 4391.06, "notional": 4293.0, "oz": 0.977, "gross": 1.71, "fees": 1.01, "pnl": 0.7, "cum": -29.22, "partials": [["2026-08-18 06:47:06", 4398.85, 2.69], ["2026-08-18 07:26:10", 4391.06, -0.98]], "hold_min": 146}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-08-18 11:45:26", "exit_time": "2026-08-18 13:45:00", "entry": 4360.99, "exit": 4360.06, "notional": 4268.0, "oz": 0.979, "gross": -3.44, "fees": 1.01, "pnl": -4.45, "cum": -33.67, "partials": [["2026-08-18 13:45:00", 4360.06, -3.44]], "hold_min": 119}, {"sym": "XAUTUSD", "dir": "short", "entry_time": "2026-08-19 03:40:40", "exit_time": "2026-08-19 06:14:03", "entry": 4356.85, "exit": 4363.6, "notional": 4222.0, "oz": 0.969, "gross": -5.12, "fees": 1.0, "pnl": -6.12, "cum": -39.79, "partials": [["2026-08-19 06:14:03", 4363.6, -5.12]], "hold_min": 153}, {"sym": "XAUTUSD", "dir": "short", "entry_time": "2026-08-20 07:48:14", "exit_time": "2026-08-20 09:01:38", "entry": 4468.35, "exit": 4483.39, "notional": 4051.0, "oz": 0.907, "gross": -17.75, "fees": 0.96, "pnl": -18.71, "cum": -58.5, "partials": [["2026-08-20 09:01:38", 4483.39, -17.75]], "hold_min": 73}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-08-20 09:42:45", "exit_time": "2026-08-20 10:55:27", "entry": 4485.14, "exit": 4509.97, "notional": 3132.0, "oz": 0.698, "gross": 16.22, "fees": 0.74, "pnl": 15.48, "cum": -43.02, "partials": [["2026-08-20 10:55:27", 4509.97, 16.22]], "hold_min": 72}, {"sym": "XAUTUSD", "dir": "short", "entry_time": "2026-08-24 09:46:52", "exit_time": "2026-08-24 10:53:30", "entry": 4671.07, "exit": 4664.9, "notional": 5586.0, "oz": 1.196, "gross": 3.29, "fees": 1.32, "pnl": 1.98, "cum": -41.04, "partials": [["2026-08-24 10:53:30", 4664.9, 3.29]], "hold_min": 66}, {"sym": "XAUTUSD", "dir": "short", "entry_time": "2026-08-24 13:33:27", "exit_time": "2026-08-24 14:14:54", "entry": 4636.51, "exit": 4631.8, "notional": 5551.0, "oz": 1.197, "gross": 3.46, "fees": 1.31, "pnl": 2.16, "cum": -38.89, "partials": [["2026-08-24 14:14:54", 4631.8, 3.46]], "hold_min": 41}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-08-24 15:17:46", "exit_time": "2026-08-24 19:50:16", "entry": 4639.91, "exit": 4681.39, "notional": 5555.0, "oz": 1.197, "gross": 34.4, "fees": 1.32, "pnl": 33.09, "cum": -5.8, "partials": [["2026-08-24 15:50:45", 4652.76, 6.04], ["2026-08-24 19:50:16", 4681.39, 28.36]], "hold_min": 272}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-08-25 10:12:44", "exit_time": "2026-08-25 10:30:30", "entry": 4625.34, "exit": 4620.52, "notional": 5538.0, "oz": 1.197, "gross": -12.56, "fees": 1.31, "pnl": -13.87, "cum": -19.66, "partials": [["2026-08-25 10:30:30", 4620.52, -12.56]], "hold_min": 17}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-08-25 10:31:32", "exit_time": "2026-08-25 10:59:38", "entry": 4625.2, "exit": 4635.44, "notional": 3691.0, "oz": 0.798, "gross": 9.2, "fees": 0.87, "pnl": 8.33, "cum": -11.34, "partials": [["2026-08-25 10:59:38", 4635.44, 9.2]], "hold_min": 28}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-08-25 11:30:20", "exit_time": "2026-08-25 12:10:01", "entry": 4643.36, "exit": 4643.48, "notional": 4631.0, "oz": 0.997, "gross": 9.1, "fees": 1.09, "pnl": 8.01, "cum": -3.33, "partials": [["2026-08-25 11:36:37", 4654.52, 7.3], ["2026-08-25 12:10:01", 4643.48, 1.8]], "hold_min": 39}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-08-26 03:02:18", "exit_time": "2026-08-26 03:34:43", "entry": 4636.14, "exit": 4633.34, "notional": 4630.0, "oz": 0.999, "gross": -4.66, "fees": 1.09, "pnl": -5.76, "cum": -9.09, "partials": [["2026-08-26 03:34:43", 4633.34, -4.66]], "hold_min": 32}, {"sym": "XAUTUSD", "dir": "long", "entry_time": "2026-08-26 04:33:05", "exit_time": "2026-08-26 05:16:23", "entry": 4629.74, "exit": 4622.35, "notional": 5542.0, "oz": 1.197, "gross": -2.89, "fees": 1.31, "pnl": -4.2, "cum": -13.28, "partials": [["2026-08-26 05:16:23", 4622.35, -2.89]], "hold_min": 43}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-08-27 05:56:26", "exit_time": "2026-08-27 06:45:56", "entry": 4581.73, "exit": 4586.98, "notional": 5491.0, "oz": 1.199, "gross": 1.05, "fees": 1.3, "pnl": -0.25, "cum": -13.53, "partials": [["2026-08-27 06:03:05", 4568.89, 4.9], ["2026-08-27 06:45:56", 4586.98, -3.85]], "hold_min": 49}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-08-27 09:17:47", "exit_time": "2026-08-27 09:27:11", "entry": 4586.4, "exit": 4591.9, "notional": 5496.0, "oz": 1.198, "gross": -8.64, "fees": 1.3, "pnl": -9.94, "cum": -23.47, "partials": [["2026-08-27 09:27:11", 4591.9, -8.64]], "hold_min": 9}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-08-27 13:30:27", "exit_time": "2026-08-27 13:40:34", "entry": 4609.76, "exit": 4613.34, "notional": 5522.0, "oz": 1.198, "gross": -5.04, "fees": 1.3, "pnl": -6.34, "cum": -29.81, "partials": [["2026-08-27 13:40:34", 4613.34, -5.04]], "hold_min": 10}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-08-28 04:56:35", "exit_time": "2026-08-28 09:57:32", "entry": 4602.72, "exit": 4617.9, "notional": 5513.0, "oz": 1.198, "gross": -15.72, "fees": 1.3, "pnl": -17.02, "cum": -46.83, "partials": [["2026-08-28 09:57:32", 4617.9, -15.72]], "hold_min": 300}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-08-28 11:02:02", "exit_time": "2026-08-28 11:50:27", "entry": 4573.56, "exit": 4537.61, "notional": 4571.0, "oz": 0.999, "gross": 28.57, "fees": 1.08, "pnl": 27.49, "cum": -19.34, "partials": [["2026-08-28 11:14:43", 4558.91, 8.4], ["2026-08-28 11:44:20", 4538.94, 8.26], ["2026-08-28 11:50:27", 4537.61, 11.91]], "hold_min": 48}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-09-01 04:55:01", "exit_time": "2026-09-01 05:02:40", "entry": 4375.95, "exit": 4366.99, "notional": 5697.0, "oz": 1.302, "gross": -12.3, "fees": 1.34, "pnl": -13.64, "cum": -32.98, "partials": [["2026-09-01 05:02:40", 4366.99, -12.3]], "hold_min": 7}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-09-01 06:38:57", "exit_time": "2026-09-01 08:32:36", "entry": 4385.28, "exit": 4362.9, "notional": 5269.0, "oz": 1.202, "gross": -27.12, "fees": 1.24, "pnl": -28.36, "cum": -61.34, "partials": [["2026-09-01 08:32:36", 4362.9, -27.12]], "hold_min": 113}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-09-01 08:45:22", "exit_time": "2026-09-01 09:00:46", "entry": 4366.77, "exit": 4350.36, "notional": 4810.0, "oz": 1.101, "gross": -16.17, "fees": 1.13, "pnl": -17.3, "cum": -78.65, "partials": [["2026-09-01 09:00:46", 4350.36, -16.17]], "hold_min": 15}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-09-02 11:14:24", "exit_time": "2026-09-02 13:36:25", "entry": 4372.6, "exit": 4367.65, "notional": 4337.0, "oz": 0.992, "gross": 2.49, "fees": 1.02, "pnl": 1.47, "cum": -77.18, "partials": [["2026-09-02 13:36:25", 4367.65, 2.49]], "hold_min": 142}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-09-03 07:26:52", "exit_time": "2026-09-03 08:39:16", "entry": 4433.09, "exit": 4475.45, "notional": 4395.0, "oz": 0.991, "gross": 40.79, "fees": 1.04, "pnl": 39.75, "cum": -37.43, "partials": [["2026-09-03 08:39:16", 4475.45, 40.79]], "hold_min": 72}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-09-04 04:07:32", "exit_time": "2026-09-04 04:51:27", "entry": 4482.03, "exit": 4474.85, "notional": 4483.0, "oz": 1.0, "gross": -7.8, "fees": 1.06, "pnl": -8.86, "cum": -46.29, "partials": [["2026-09-04 04:51:27", 4474.85, -7.8]], "hold_min": 43}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-09-07 02:53:00", "exit_time": "2026-09-07 03:55:53", "entry": 4397.44, "exit": 4405.89, "notional": 4395.0, "oz": 0.999, "gross": -7.5, "fees": 1.04, "pnl": -8.54, "cum": -54.83, "partials": [["2026-09-07 03:55:53", 4405.89, -7.5]], "hold_min": 62}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-09-08 08:28:01", "exit_time": "2026-09-08 08:40:21", "entry": 4397.6, "exit": 4397.85, "notional": 4399.0, "oz": 1.0, "gross": 0.78, "fees": 1.04, "pnl": -0.26, "cum": -55.09, "partials": [["2026-09-08 08:40:21", 4397.85, 0.78]], "hold_min": 12}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-09-09 04:10:57", "exit_time": "2026-09-09 07:02:11", "entry": 4405.07, "exit": 4401.91, "notional": 4406.0, "oz": 1.0, "gross": 9.1, "fees": 1.04, "pnl": 8.06, "cum": -47.03, "partials": [["2026-09-09 06:02:15", 4388.55, 8.65], ["2026-09-09 07:02:11", 4401.91, 0.45]], "hold_min": 171}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-09-09 12:05:18", "exit_time": "2026-09-09 12:08:55", "entry": 4400.48, "exit": 4396.23, "notional": 4402.0, "oz": 1.0, "gross": -6.2, "fees": 1.04, "pnl": -7.24, "cum": -54.26, "partials": [["2026-09-09 12:08:55", 4396.23, -6.2]], "hold_min": 3}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-09-10 06:02:25", "exit_time": "2026-09-10 06:32:34", "entry": 4396.31, "exit": 4388.39, "notional": 4177.0, "oz": 0.95, "gross": -7.92, "fees": 0.98, "pnl": -8.9, "cum": -63.16, "partials": [["2026-09-10 06:32:34", 4388.39, -7.92]], "hold_min": 30}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-09-10 06:42:45", "exit_time": "2026-09-10 06:52:44", "entry": 4386.07, "exit": 4377.24, "notional": 3948.0, "oz": 0.9, "gross": -8.34, "fees": 0.93, "pnl": -9.27, "cum": -72.44, "partials": [["2026-09-10 06:52:44", 4377.24, -8.34]], "hold_min": 9}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-09-10 08:48:41", "exit_time": "2026-09-10 08:52:03", "entry": 4345.44, "exit": 4346.85, "notional": 3914.0, "oz": 0.901, "gross": 3.87, "fees": 0.92, "pnl": 2.95, "cum": -69.49, "partials": [["2026-09-10 08:52:03", 4346.85, 3.87]], "hold_min": 3}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-09-11 00:13:49", "exit_time": "2026-09-11 00:43:04", "entry": 4324.08, "exit": 4331.49, "notional": 3899.0, "oz": 0.902, "gross": 6.84, "fees": 0.92, "pnl": 5.92, "cum": -63.57, "partials": [["2026-09-11 00:43:04", 4331.49, 6.84]], "hold_min": 29}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-09-15 08:53:27", "exit_time": "2026-09-15 10:15:19", "entry": 4291.58, "exit": 4295.44, "notional": 4166.0, "oz": 0.971, "gross": 2.04, "fees": 0.98, "pnl": 1.05, "cum": -62.52, "partials": [["2026-09-15 10:15:19", 4295.44, 2.04]], "hold_min": 81}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-09-21 01:46:09", "exit_time": "2026-09-21 03:03:29", "entry": 4352.34, "exit": 4355.31, "notional": 3042.0, "oz": 0.699, "gross": -1.89, "fees": 0.72, "pnl": -2.61, "cum": -65.13, "partials": [["2026-09-21 03:03:29", 4355.31, -1.89]], "hold_min": 77}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-09-21 04:08:09", "exit_time": "2026-09-21 06:15:11", "entry": 4349.32, "exit": 4355.8, "notional": 3040.0, "oz": 0.699, "gross": -6.37, "fees": 0.72, "pnl": -7.09, "cum": -72.21, "partials": [["2026-09-21 06:15:11", 4355.8, -6.37]], "hold_min": 127}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-09-21 08:05:10", "exit_time": "2026-09-21 08:16:23", "entry": 4372.61, "exit": 4368.44, "notional": 3057.0, "oz": 0.699, "gross": -0.77, "fees": 0.72, "pnl": -1.49, "cum": -73.7, "partials": [["2026-09-21 08:16:23", 4368.44, -0.77]], "hold_min": 11}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-09-21 08:33:42", "exit_time": "2026-09-21 09:26:02", "entry": 4357.74, "exit": 4363.69, "notional": 3049.0, "oz": 0.7, "gross": -8.12, "fees": 0.72, "pnl": -8.84, "cum": -82.55, "partials": [["2026-09-21 09:26:02", 4363.69, -8.12]], "hold_min": 52}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-09-21 09:32:16", "exit_time": "2026-09-21 10:06:06", "entry": 4354.91, "exit": 4328.02, "notional": 3486.0, "oz": 0.8, "gross": 26.15, "fees": 0.82, "pnl": 25.33, "cum": -57.21, "partials": [["2026-09-21 10:06:06", 4328.02, 26.15]], "hold_min": 33}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-09-21 10:27:08", "exit_time": "2026-09-21 10:48:15", "entry": 4340.31, "exit": 4336.74, "notional": 3472.0, "oz": 0.8, "gross": 0.91, "fees": 0.82, "pnl": 0.09, "cum": -57.12, "partials": [["2026-09-21 10:48:15", 4336.74, 0.91]], "hold_min": 21}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-09-22 04:24:35", "exit_time": "2026-09-22 04:35:10", "entry": 4303.1, "exit": 4300.43, "notional": 3444.0, "oz": 0.8, "gross": 4.47, "fees": 0.81, "pnl": 3.66, "cum": -53.47, "partials": [["2026-09-22 04:35:10", 4300.43, 4.47]], "hold_min": 10}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-09-22 08:20:39", "exit_time": "2026-09-22 08:46:42", "entry": 4334.66, "exit": 4332.28, "notional": 3463.0, "oz": 0.799, "gross": 2.8, "fees": 0.82, "pnl": 1.98, "cum": -51.48, "partials": [["2026-09-22 08:46:42", 4332.28, 2.8]], "hold_min": 26}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-09-22 09:34:25", "exit_time": "2026-09-22 09:54:09", "entry": 4333.56, "exit": 4331.65, "notional": 4334.0, "oz": 1.0, "gross": 0.4, "fees": 1.02, "pnl": -0.62, "cum": -52.11, "partials": [["2026-09-22 09:54:09", 4331.65, 0.4]], "hold_min": 19}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-09-22 09:58:01", "exit_time": "2026-09-22 10:33:26", "entry": 4334.57, "exit": 4326.32, "notional": 4336.0, "oz": 1.0, "gross": -10.6, "fees": 1.02, "pnl": -11.62, "cum": -63.73, "partials": [["2026-09-22 10:33:26", 4326.32, -10.6]], "hold_min": 35}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-09-23 03:54:44", "exit_time": "2026-09-23 04:46:48", "entry": 4321.99, "exit": 4317.02, "notional": 3888.0, "oz": 0.9, "gross": 3.02, "fees": 0.92, "pnl": 2.1, "cum": -61.63, "partials": [["2026-09-23 04:46:48", 4317.02, 3.02]], "hold_min": 52}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-09-23 08:25:13", "exit_time": "2026-09-23 09:42:33", "entry": 4313.61, "exit": 4287.45, "notional": 3453.0, "oz": 0.801, "gross": -16.8, "fees": 0.81, "pnl": -17.61, "cum": -79.24, "partials": [["2026-09-23 09:42:33", 4287.45, -16.8]], "hold_min": 77}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-09-23 10:34:14", "exit_time": "2026-09-23 11:37:48", "entry": 4289.01, "exit": 4281.85, "notional": 3434.0, "oz": 0.801, "gross": -8.48, "fees": 0.81, "pnl": -9.29, "cum": -88.53, "partials": [["2026-09-23 11:37:48", 4281.85, -8.48]], "hold_min": 63}, {"sym": "PAXGUSD", "dir": "long", "entry_time": "2026-09-24 03:04:43", "exit_time": "2026-09-24 03:55:54", "entry": 4279.85, "exit": 4279.11, "notional": 3423.0, "oz": 0.8, "gross": -1.31, "fees": 0.81, "pnl": -2.12, "cum": -90.65, "partials": [["2026-09-24 03:55:54", 4279.11, -1.31]], "hold_min": 51}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-09-24 04:38:36", "exit_time": "2026-09-24 06:36:51", "entry": 4267.81, "exit": 4259.56, "notional": 3369.0, "oz": 0.789, "gross": 6.0, "fees": 0.79, "pnl": 5.2, "cum": -85.45, "partials": [["2026-09-24 06:36:51", 4259.56, 6.0]], "hold_min": 118}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-09-24 09:16:24", "exit_time": "2026-09-24 12:15:47", "entry": 4277.31, "exit": 4269.11, "notional": 3420.0, "oz": 0.8, "gross": 7.28, "fees": 0.81, "pnl": 6.47, "cum": -78.97, "partials": [["2026-09-24 12:15:47", 4269.11, 7.28]], "hold_min": 179}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-09-25 07:42:56", "exit_time": "2026-09-25 08:26:20", "entry": 4300.14, "exit": 4307.06, "notional": 3435.0, "oz": 0.799, "gross": -5.92, "fees": 0.81, "pnl": -6.73, "cum": -85.71, "partials": [["2026-09-25 08:26:20", 4307.06, -5.92]], "hold_min": 43}, {"sym": "PAXGUSD", "dir": "short", "entry_time": "2026-09-25 10:14:50", "exit_time": "2026-09-25 10:38:23", "entry": 4267.26, "exit": 4272.02, "notional": 3409.0, "oz": 0.799, "gross": -6.18, "fees": 0.81, "pnl": -6.98, "cum": -92.69, "partials": [["2026-09-25 10:38:23", 4272.02, -6.18]], "hold_min": 23}]};
+const pt=s=>Date.UTC(+s.slice(0,4),+s.slice(5,7)-1,+s.slice(8,10),+s.slice(11,13),+s.slice(14,16),+(s.slice(17,19)||0))/1000;
+TR.trades.forEach(x=>{x.tE=pt(x.entry_time);x.tX=pt(x.exit_time);});
+const SESS=[["Asia",20,24,"#8B7CF0","lyAsia"],["London",2,5,"#3A9AD9","lyLondon"],["New York",7,10,"#E9B930","lyNY"]];
+const sessCache={};
+function sessHL(dayStart,h1,h2){
+  const key=dayStart+":"+h1+":"+h2; if(sessCache[key]!==undefined) return sessCache[key];
+  const a=dayStart+h1*3600, b=dayStart+h2*3600; let lo=0,hi=m1.length; while(lo<hi){const m=(lo+hi)>>1; if(m1[m].time<a) lo=m+1; else hi=m;}
+  let H=-Infinity,L=Infinity; for(let i=lo;i<m1.length&&m1[i].time<b;i++){if(m1[i].high>H)H=m1[i].high;if(m1[i].low<L)L=m1[i].low;}
+  return sessCache[key]=(H>L?{H,L}:null);
+}
+
+/* ---------- camarilla pivots ---------- */
+const hlcCache={};
+function periodHLC(a,b){ const key=a+":"+b; if(hlcCache[key]!==undefined) return hlcCache[key];
+  let lo=0,hi=m1.length; while(lo<hi){const m=(lo+hi)>>1; if(m1[m].time<a) lo=m+1; else hi=m;}
+  let H=-Infinity,L=Infinity,C=null; for(let i=lo;i<m1.length&&m1[i].time<b;i++){if(m1[i].high>H)H=m1[i].high;if(m1[i].low<L)L=m1[i].low;C=m1[i].close;}
+  return hlcCache[key]=(C!=null&&H>L?{H,L,C}:null); }
+function camarilla(h){ const r=h.H-h.L, C=h.C, H5=(h.H/h.L)*C; return {H5,H4:C+r*1.1/2,H3:C+r*1.1/4,H2:C+r*1.1/6,H1:C+r*1.1/12,P:(h.H+h.L+C)/3,CP:C,L1:C-r*1.1/12,L2:C-r*1.1/6,L3:C-r*1.1/4,L4:C-r*1.1/2,L5:C-(H5-C)}; }
+const CAM=[["D","lyCamD","#F28C28"],["W","lyCamW","#2BB3C0"],["M","lyCamM","#D64FA0"]];
+function nyMonthStart(t){ const d=new Date(t*1000); return Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),1)/1000; }
+function nyMonthAdd(t,n){ const d=new Date(t*1000); return Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+n,1)/1000; }
+function camPeriods(kind,vr){ // returns [{a,b,prevA,prevB}] periods overlapping the visible range
+  const out=[];
+  if(kind==="D"){ const day0=Math.floor(vr.from/86400)*86400-86400; for(let d=day0; d<=vr.to; d+=86400){ const dow=new Date(d*1000).getUTCDay(); if(dow===0||dow===6) continue;
+      const pa=d-(dow===1?3:1)*86400-7*3600; out.push({a:d-7*3600,b:d+17*3600,prevA:pa,prevB:pa+86400}); } }
+  else if(kind==="W"){ // weeks start Sunday 17:00 NY; epoch Thursday 00:00 -> Sunday 17:00 = +3d+17h
+    let w=Math.floor((vr.from-3*86400-17*3600)/604800)*604800+3*86400+17*3600-604800;
+    for(; w<=vr.to; w+=604800) out.push({a:w,b:w+5*86400,prevA:w-604800,prevB:w}); }
+  else { let m=nyMonthAdd(nyMonthStart(vr.from),-1); for(; m<=vr.to; m=nyMonthAdd(m,1)) out.push({a:m,b:nyMonthAdd(m,1),prevA:nyMonthAdd(m,-1),prevB:m}); }
+  return out; }
+function drawCamarilla(P,vr,h,pw){
+  const {ctx,series}=P; const span=vr.to-vr.from, sec=secOf(P.tf);
+  for(const [kind,id,col] of CAM){
+    if(!$("#"+id).checked) continue;
+    if(kind==="D"&&(sec>14400||span>12*86400)) continue; if(kind==="W"&&(sec>86400||span>70*86400)) continue; if(kind==="M"&&sec>604800) continue;
+    const detail=kind==="D"?span<4*86400:kind==="W"?span<21*86400:span<120*86400;
+    for(const p of camPeriods(kind,vr)){ if(p.b<vr.from||p.a>vr.to) continue; const hl=periodHLC(p.prevA,p.prevB); if(!hl) continue;
+      const lv=camarilla(hl); const x1=Math.max(0,P.xOf(p.a)), x2=Math.min(pw,P.xOf(p.b)); if(x1==null||x2==null||x2<=x1) continue;
+      ctx.strokeStyle=col; ctx.fillStyle=col; ctx.font="10.5px "+css("--mono");
+      for(const k in lv){ const y=series.priceToCoordinate(lv[k]); if(y==null||y<0||y>h) continue; const strong=/^[HL][345]$/.test(k), piv=k==="P"||k==="CP";
+        ctx.lineWidth=strong?1.3:0.8; ctx.setLineDash(piv?[1,3]:strong?[]:[3,3]); ctx.globalAlpha=strong?.9:.6; ctx.beginPath(); ctx.moveTo(x1,y); ctx.lineTo(x2,y); ctx.stroke();
+        if(detail){ ctx.globalAlpha=1; ctx.fillText(kind+" "+k+" "+lv[k].toFixed(2),x1+4,y-2); } }
+      ctx.setLineDash([]); ctx.globalAlpha=1; ctx.lineWidth=1; } } }
+
+/* ---------- panes ---------- */
+const panes=[]; let active=0;
+const R={on:false,idx:0,timer:null};
+function makePane(tf){
+  const el=document.createElement("div"); el.className="pane";
+  el.innerHTML='<div class="ch"></div><canvas class="ov"></canvas><div class="lg"></div>';
+  $("#panes").appendChild(el);
+  const chart=LightweightCharts.createChart(el.querySelector(".ch"),{
+    layout:{background:{type:"solid",color:css("--bg")},textColor:css("--mut"),fontFamily:css("--body")},
+    grid:{vertLines:{color:css("--line")},horzLines:{color:css("--line")}},
+    crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
+    rightPriceScale:{borderColor:css("--line"),scaleMargins:{top:.08,bottom:.08}},
+    timeScale:{borderColor:css("--line"),timeVisible:true,secondsVisible:false,rightOffset:6,barSpacing:8},
+    localization:{locale:"en-US"},autoSize:true});
+  const series=chart.addCandlestickSeries({upColor:css("--up"),downColor:css("--dn"),borderVisible:false,wickUpColor:css("--up"),wickDownColor:css("--dn"),priceFormat:{type:"price",precision:2,minMove:0.01}});
+  const P={el,chart,series,tf,bars:[],ov:el.querySelector(".ov"),ctx:el.querySelector(".ov").getContext("2d"),lg:el.querySelector(".lg")};
+  P.legend=d=>{ if(!d) return; const ch=d.close-d.open, cls=ch>=0?"u":"d";
+    P.lg.innerHTML=`<span class="tfl">${P.tf}</span><b>${fmt(d.time)}</b> &nbsp;<b>O</b> ${d.open.toFixed(2)} <b>H</b> ${d.high.toFixed(2)} <b>L</b> ${d.low.toFixed(2)} <b>C</b> ${d.close.toFixed(2)} <span class="${cls}">${ch>=0?"+":""}${ch.toFixed(2)} (${(ch/d.open*100).toFixed(2)}%)</span>`; };
+  P.last=()=>P.bars[P.bars.length-1];
+  P.setTF=(tf,keep)=>{ P.tf=tf; P.bars=R.on?resample(tf,m1.slice(0,R.idx)):(loaded[tf]||resample(tf));
+    const vr=chart.timeScale().getVisibleRange(); series.setData(P.bars.map(b=>disp(b,P.tf))); const N=140;
+    if(keep&&vr){const c=secOf(tf)>=86400?(vr.from+vr.to)/2:unshift((vr.from+vr.to)/2); let i=P.bars.findIndex(b=>b.time>=c); if(i<0)i=P.bars.length-1; let to=Math.min(i+N/2,P.bars.length+5); chart.timeScale().setVisibleLogicalRange({from:to-N,to});}
+    else chart.timeScale().setVisibleLogicalRange({from:P.bars.length-N,to:P.bars.length+5});
+    if(P.last()) P.legend(disp(P.last(),P.tf)); if(R.on) P.follow(); requestAnimationFrame(P.draw); if(panes[active]===P) syncTFButtons(); };
+  P.applyMinute=r=>{ const f=bucketFn(P.tf), k=f(r.time), lb=P.last();
+    if(lb&&lb.time===k){lb.high=Math.max(lb.high,r.high);lb.low=Math.min(lb.low,r.low);lb.close=r.close;}
+    else if(lb&&k<lb.time) return; else P.bars.push(P.tf==="1m"?r:{time:k,open:r.open,high:r.high,low:r.low,close:r.close});
+    series.update(disp(P.last(),P.tf)); P.legend(disp(P.last(),P.tf)); };
+  P.follow=()=>{ const lr=chart.timeScale().getVisibleLogicalRange(); if(!lr) return; const w=lr.to-lr.from, n=P.bars.length-1; if(n>lr.to-2||n<lr.from) chart.timeScale().setVisibleLogicalRange({from:n-w*0.75,to:n+w*0.25}); };
+  P.xOf=time=>{ const bars=P.bars; let lo=0,hi=bars.length-1; while(lo<hi){const m=(lo+hi)>>1; if(bars[m].time<time) lo=m+1; else hi=m;}
+    let i=lo; if(i>0&&bars[i].time>time) i=i-1+(time-bars[i-1].time)/Math.max(1,bars[i].time-bars[i-1].time); else if(i===bars.length-1&&time>bars[i].time) i+= (time-bars[i].time)/secOf(P.tf);
+    const lr=chart.timeScale().getVisibleLogicalRange(); if(!lr) return null; const pw=el.clientWidth-chart.priceScale("right").width(); return (i-lr.from)/(lr.to-lr.from)*pw; };
+  P.visibleNY=()=>{ const lr=chart.timeScale().getVisibleLogicalRange(); if(!lr||!P.bars.length) return null; const n=P.bars.length; const ia=Math.max(0,Math.min(n-1,Math.floor(lr.from))), ib=Math.max(0,Math.min(n-1,Math.ceil(lr.to)));
+    return {from:P.bars[ia].time,to:P.bars[ib].time+secOf(P.tf)*Math.max(1,lr.to-ib+1)}; };
+  P.draw=()=>{ if(P.dead) return; try{drawOverlays(P);}catch(e){} };
+  P.goto=(from,to)=>{const big=secOf(P.tf)>=86400; chart.timeScale().setVisibleRange({from:big?from:shift(from),to:big?to:shift(to)});};
+  chart.subscribeCrosshairMove(p=>{const d=p.seriesData.get(series); if(d) P.legend(d); else if(P.last()) P.legend(disp(P.last(),P.tf));});
+  chart.timeScale().subscribeVisibleLogicalRangeChange(()=>requestAnimationFrame(P.draw));
+  P.ro=new ResizeObserver(()=>requestAnimationFrame(P.draw)); P.ro.observe(el);
+  el.addEventListener("mousedown",()=>setActive(panes.indexOf(P)),true);
+  P.theme=()=>{ chart.applyOptions({layout:{background:{type:"solid",color:css("--bg")},textColor:css("--mut")},grid:{vertLines:{color:css("--line")},horzLines:{color:css("--line")}},rightPriceScale:{borderColor:css("--line")},timeScale:{borderColor:css("--line")}});
+    series.applyOptions({upColor:css("--up"),downColor:css("--dn"),wickUpColor:css("--up"),wickDownColor:css("--dn")}); };
+  attachDrawing(P); panes.push(P); return P;
+}
+function setActive(i){ active=i; panes.forEach((p,k)=>p.el.classList.toggle("active",k===i)); syncTFButtons(); }
+function syncTFButtons(){ const tf=panes[active]&&panes[active].tf; $$("#tfs button").forEach(b=>b.classList.toggle("on",b.dataset.tf===tf)); }
+let colFr=[1,1], rowFr=[1,1]; try{const s=JSON.parse(localStorage.getItem("frs")||"null"); if(s){colFr=s.c;rowFr=s.r;}}catch(e){}
+function applyGrid(){ const n=panes.length, g=$("#panes");
+  g.style.gridTemplateColumns=n>=2?`${colFr[0]}fr ${colFr[1]}fr`:""; g.style.gridTemplateRows=n===4?`${rowFr[0]}fr ${rowFr[1]}fr`:"";
+  $$("#panes .split").forEach(s=>s.remove());
+  if(n>=2){ const v=document.createElement("div"); v.className="split v"; v.style.left=(100*colFr[0]/(colFr[0]+colFr[1]))+"%"; g.appendChild(v); splitDrag(v,"c"); }
+  if(n===4){ const hz=document.createElement("div"); hz.className="split h"; hz.style.top=(100*rowFr[0]/(rowFr[0]+rowFr[1]))+"%"; g.appendChild(hz); splitDrag(hz,"r"); }
+  try{localStorage.setItem("frs",JSON.stringify({c:colFr,r:rowFr}));}catch(e){} }
+function splitDrag(el,axis){ el.addEventListener("mousedown",ev=>{ ev.preventDefault(); el.classList.add("on"); const g=$("#panes").getBoundingClientRect();
+  const mv=e=>{ let f=axis==="c"?(e.clientX-g.left)/g.width:(e.clientY-g.top)/g.height; f=Math.max(.15,Math.min(.85,f)); if(axis==="c") colFr=[f,1-f]; else rowFr=[f,1-f]; applyGrid(); };
+  const up=()=>{ el.classList.remove("on"); window.removeEventListener("mousemove",mv); window.removeEventListener("mouseup",up); drawAll(); };
+  window.addEventListener("mousemove",mv); window.addEventListener("mouseup",up); }); }
+function setLayout(n){
+
+  const defaults=["15m","1h","5m","1D"];
+  while(panes.length<n){ const P=makePane(defaults[panes.length]||"15m"); P.setTF(P.tf,false); }
+  while(panes.length>n){ const p=panes.pop(); p.dead=true; p.ro.disconnect(); p.chart.remove(); p.el.remove(); }
+  $("#panes").className="l"+n; applyGrid(); $$("#layout button").forEach(b=>b.classList.toggle("on",+b.dataset.n===n));
+  setActive(Math.min(active,n-1)); try{localStorage.setItem("layout",n);}catch(e){}
+}
+
+/* ---------- overlays ---------- */
+function drawOverlays(P){
+  const {ctx,ov,el,chart,series}=P; const w=el.clientWidth, h=el.clientHeight, dpr=window.devicePixelRatio||1;
+  if(ov.width!==w*dpr||ov.height!==h*dpr){ov.width=w*dpr;ov.height=h*dpr;} ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  if(!P.bars.length) return;
+  const pw=w-chart.priceScale("right").width(), up=css("--up"), dn=css("--dn"), ink=css("--ink"), mut=css("--mut");
+  const vr=P.visibleNY();
+  if(vr&&secOf(P.tf)<86400){
+    const day0=Math.floor(vr.from/86400)*86400-86400, day1=vr.to; ctx.font="11px "+css("--mono"); const detail=(vr.to-vr.from)<4*86400, sessions=secOf(P.tf)<=14400&&(vr.to-vr.from)<12*86400;
+    for(let d=day0; d<=day1; d+=86400){
+      const dow=new Date(d*1000).getUTCDay();
+      for(const [name,h1,h2,col,id] of SESS){
+        if(!sessions||!$("#"+id).checked) continue; const s=d+h1*3600, e=d+h2*3600; if(e<vr.from||s>vr.to) continue;
+        if(name==="Asia"&&dow===5) continue; if(name!=="Asia"&&(dow===0||dow===6)) continue;
+        const x1=P.xOf(s), x2=P.xOf(e); if(x1==null||x2==null) continue;
+        ctx.globalAlpha=.07; ctx.fillStyle=col; ctx.fillRect(x1,0,x2-x1,h); ctx.globalAlpha=.5; ctx.strokeStyle=col; ctx.beginPath(); ctx.moveTo(x1+.5,0); ctx.lineTo(x1+.5,h); ctx.stroke(); ctx.globalAlpha=1;
+        ctx.fillStyle=col; ctx.font="11px "+css("--mono"); ctx.fillText(name,x1+4,h-8);
+        const hl=sessHL(d,h1,h2); if(!hl||!detail) continue;
+        const xe=P.xOf(d+(name==="New York"?16:12)*3600); const yH=series.priceToCoordinate(hl.H), yL=series.priceToCoordinate(hl.L);
+        ctx.setLineDash([4,4]); ctx.strokeStyle=col; ctx.globalAlpha=.8;
+        if(yH!=null){ctx.beginPath();ctx.moveTo(x1,yH);ctx.lineTo(xe,yH);ctx.stroke(); ctx.fillText(name+" high",Math.max(x1,0)+4,yH-3);}
+        if(yL!=null){ctx.beginPath();ctx.moveTo(x1,yL);ctx.lineTo(xe,yL);ctx.stroke(); ctx.fillText(name+" low",Math.max(x1,0)+4,yL+12);}
+        ctx.setLineDash([]); ctx.globalAlpha=1;
+      }
+      if(sessions&&$("#lyLunch").checked&&dow>=1&&dow<=5){ const s=d+12*3600,e=d+13*3600; if(!(e<vr.from||s>vr.to)){ const x1=P.xOf(s),x2=P.xOf(e); if(x1!=null&&x2!=null){
+        ctx.save(); ctx.beginPath(); ctx.rect(x1,0,x2-x1,h); ctx.clip(); ctx.globalAlpha=.10; ctx.fillStyle=dn; ctx.fillRect(x1,0,x2-x1,h); ctx.globalAlpha=.35; ctx.strokeStyle=dn; ctx.lineWidth=1;
+        for(let k=-h;k<x2-x1+h;k+=9){ctx.beginPath();ctx.moveTo(x1+k,0);ctx.lineTo(x1+k+h,h);ctx.stroke();} ctx.restore(); ctx.globalAlpha=1;
+        if(detail){ctx.fillStyle=dn; ctx.font="600 11px "+css("--body"); ctx.fillText("NY lunch",x1+4,14); ctx.font="11px "+css("--mono"); ctx.fillText("no trade",x1+4,27);} }}}
+      if(sessions&&$("#lyClock").checked&&dow>=1&&dow<=5){
+        const FB=[[5,5.5,dn,"5:00–5:30 dip into AM fix (down 59%)"],[9,11,css("--acc"),"9–11 am: day's high/low zone (2½× chance)"],[16,17,dn,"4–5 pm weak close (up 38%)"],[18,19,up,"6–7 pm reopen leans up (61%)"]];
+        for(const [h1,h2,col,lab] of FB){ const s=d+h1*3600,e=d+h2*3600; if(e<vr.from||s>vr.to) continue; const x1=P.xOf(s),x2=P.xOf(e); if(x1==null||x2==null) continue;
+          ctx.fillStyle=col; ctx.globalAlpha=.10; ctx.fillRect(x1,0,x2-x1,h); ctx.globalAlpha=.9; ctx.fillRect(x1,h-4,x2-x1,4); ctx.globalAlpha=1;
+          if(detail){ ctx.font="600 10.5px "+css("--body"); ctx.fillText(lab,x1+4,h-28); } }
+      }
+      if($("#lyPD").checked&&dow>=1&&dow<=5){
+        const hl=sessHL(d-(dow===1?3:1)*86400-7*3600,0,24);
+        if(hl){const xa=P.xOf(d-7*3600), xb=P.xOf(d+17*3600); const yH=series.priceToCoordinate(hl.H), yL=series.priceToCoordinate(hl.L); ctx.lineWidth=1.2; ctx.font="11px "+css("--mono");
+          if(yH!=null){ctx.strokeStyle=dn;ctx.beginPath();ctx.moveTo(xa,yH);ctx.lineTo(xb,yH);ctx.stroke();if(detail){ctx.fillStyle=dn;ctx.fillText("PDH "+hl.H.toFixed(2),Math.max(xa,0)+4,yH-3);}}
+          if(yL!=null){ctx.strokeStyle=up;ctx.beginPath();ctx.moveTo(xa,yL);ctx.lineTo(xb,yL);ctx.stroke();if(detail){ctx.fillStyle=up;ctx.fillText("PDL "+hl.L.toFixed(2),Math.max(xa,0)+4,yL+12);}} ctx.lineWidth=1;}
+      }
+      const xm=P.xOf(d); if(sessions&&$("#lyMid").checked&&xm!=null&&d>=vr.from&&d<=vr.to&&dow!==6&&dow!==0){ctx.strokeStyle=mut; ctx.setLineDash([2,4]); ctx.beginPath(); ctx.moveTo(xm+.5,0); ctx.lineTo(xm+.5,h); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle=mut; ctx.font="11px "+css("--mono"); ctx.fillText("00:00 NY",xm+3,h-22);}
+    }
+  }
+  if(vr) drawCamarilla(P,vr,h,pw);
+  drawUser(P);
+  if(!$("#showBoxes").checked||secOf(P.tf)>=86400) return;
+  for(const x of TR.trades){
+    const x1=P.xOf(x.tE); let x2=P.xOf(x.tX); if(x1==null||x2==null) continue; x2=Math.max(x2,x1+5); if(x2<0||x1>pw) continue;
+    const yE=series.priceToCoordinate(x.entry), yX=series.priceToCoordinate(x.exit); if(yE==null||yX==null) continue;
+    const col=x.pnl>=0?up:dn, top=Math.min(yE,yX), hh=Math.max(4,Math.abs(yX-yE));
+    ctx.globalAlpha=.25; ctx.fillStyle=col; ctx.fillRect(x1,top,x2-x1,hh); ctx.globalAlpha=1; ctx.strokeStyle=col; ctx.lineWidth=1.2; ctx.strokeRect(x1+.5,top+.5,x2-x1-1,hh-1);
+    ctx.strokeStyle=ink; ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(x1,yE); ctx.lineTo(x2,yE); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=ink; ctx.beginPath(); if(x.dir==="long"){ctx.moveTo(x1,yE+8);ctx.lineTo(x1-5,yE+16);ctx.lineTo(x1+5,yE+16);} else {ctx.moveTo(x1,yE-8);ctx.lineTo(x1-5,yE-16);ctx.lineTo(x1+5,yE-16);} ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.arc(x2,yX,3,0,6.283); ctx.fill();
+    for(const p of x.partials.slice(0,-1)){const xp=P.xOf(pt(p[0])), yp=series.priceToCoordinate(p[1]); if(xp!=null&&yp!=null){ctx.beginPath();ctx.arc(xp,yp,2.5,0,6.283);ctx.fill();}}
+    if(x2-x1>14){ctx.fillStyle=col; ctx.font="600 11px "+css("--body"); ctx.fillText((x.dir==="long"?"LONG ":"SHORT ")+(x.pnl>=0?"+":"-")+"$"+Math.abs(x.pnl).toFixed(2),x1+3,top-5);}
+  }
+}
+/* ---------- user drawings ---------- */
+let DR=[]; try{DR=JSON.parse(localStorage.getItem("drawings")||"[]");}catch(e){}
+const saveDR=()=>{try{localStorage.setItem("drawings",JSON.stringify(DR));}catch(e){}};
+let tool="cursor", dragging=null;
+function setTool(name){ tool=name; $$("#tools button").forEach(b=>b.classList.toggle("on",b.dataset.tool===name)); document.body.classList.toggle("drawing",name!=="cursor"); document.body.classList.toggle("erase",name==="erase"); }
+$$("#tools button").forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
+$("#drawClear").onclick=()=>{ if(DR.length&&confirm("Remove all "+DR.length+" drawings?")){DR=[];saveDR();drawAll();} };
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") setTool("cursor"); });
+function paneXY(P,ev){ const r=P.ov.getBoundingClientRect(); return {x:ev.clientX-r.left,y:ev.clientY-r.top}; }
+function timeAtX(P,x){ // pixel -> NY time via bar index (fractional, extrapolates past the ends)
+  const lr=P.chart.timeScale().getVisibleLogicalRange(); if(!lr||!P.bars.length) return null;
+  const pw=P.el.clientWidth-P.chart.priceScale("right").width(); const i=lr.from+(x/pw)*(lr.to-lr.from); const n=P.bars.length, sec=secOf(P.tf);
+  if(i<=0) return P.bars[0].time+i*sec; if(i>=n-1) return P.bars[n-1].time+(i-(n-1))*sec;
+  const k=Math.floor(i); return P.bars[k].time+(i-k)*(P.bars[k+1].time-P.bars[k].time); }
+function drawShape(P,s,temp){
+  const {ctx,series}=P, w=P.el.clientWidth, pw=w-P.chart.priceScale("right").width();
+  const y1=series.priceToCoordinate(s.p1), y2=s.p2!=null?series.priceToCoordinate(s.p2):null; if(y1==null) return;
+  ctx.save(); ctx.strokeStyle=s.c; ctx.fillStyle=s.c; ctx.lineWidth=temp?1:1.6; if(temp) ctx.setLineDash([4,3]);
+  ctx.font="11px "+css("--mono");
+  if(s.type==="hline"){ ctx.beginPath(); ctx.moveTo(0,y1); ctx.lineTo(pw,y1); ctx.stroke(); ctx.fillText(s.p1.toFixed(2),4,y1-4); }
+  else { const x1=P.xOf(s.t1), x2=P.xOf(s.t2); if(x1==null||x2==null||y2==null){ctx.restore();return;}
+    if(s.type==="line"){ ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); }
+    if(!temp){ ctx.fillRect(x1-3,y1-3,6,6); ctx.fillRect(x2-3,y2-3,6,6); }
+    else { ctx.globalAlpha=.18; ctx.fillRect(Math.min(x1,x2),Math.min(y1,y2),Math.abs(x2-x1),Math.abs(y2-y1)); ctx.globalAlpha=1; ctx.strokeRect(Math.min(x1,x2)+.5,Math.min(y1,y2)+.5,Math.abs(x2-x1),Math.abs(y2-y1));
+      ctx.fillText(Math.max(s.p1,s.p2).toFixed(2),Math.min(x1,x2)+4,Math.min(y1,y2)-4); ctx.fillText(Math.min(s.p1,s.p2).toFixed(2),Math.min(x1,x2)+4,Math.max(y1,y2)+13); } }
+  ctx.restore();
+}
+function drawUser(P){ for(const s of DR) drawShape(P,s,false); if(dragging&&dragging.P===P) drawShape(P,dragging.s,true); }
+function distToShape(P,s,x,y){ const {series}=P, pw=P.el.clientWidth-P.chart.priceScale("right").width();
+  const y1=series.priceToCoordinate(s.p1); if(y1==null) return 1e9;
+  if(s.type==="hline") return Math.abs(y-y1);
+  const x1=P.xOf(s.t1), x2=P.xOf(s.t2), y2=series.priceToCoordinate(s.p2); if(x1==null||x2==null||y2==null) return 1e9;
+  const seg=(ax,ay,bx,by)=>{const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy||1; let u=((x-ax)*dx+(y-ay)*dy)/l2; u=Math.max(0,Math.min(1,u)); return Math.hypot(x-(ax+u*dx),y-(ay+u*dy));};
+  if(s.type==="line") return seg(x1,y1,x2,y2);
+  const l=Math.min(x1,x2),r=Math.max(x1,x2),tp=Math.min(y1,y2),bt=Math.max(y1,y2);
+  if(x>=l&&x<=r&&y>=tp&&y<=bt) return 0; return Math.min(seg(l,tp,r,tp),seg(l,bt,r,bt),seg(l,tp,l,bt),seg(r,tp,r,bt)); }
+function hitTest(P,x,y){ let best=null,bd=8;
+  DR.forEach((s,i)=>{ const {series}=P; const y1=series.priceToCoordinate(s.p1); if(y1==null) return;
+    if(s.type!=="hline"){ const x1=P.xOf(s.t1),x2=P.xOf(s.t2),y2=series.priceToCoordinate(s.p2); if(x1!=null&&y2!=null){ const da=Math.hypot(x-x1,y-y1), db=Math.hypot(x-x2,y-y2);
+      if(da<bd){bd=da;best={i,part:"a"};return;} if(db<bd){bd=db;best={i,part:"b"};return;} } }
+    const d=distToShape(P,s,x,y); if(d<bd){bd=d;best={i,part:"body"};} });
+  return best; }
+function attachDrawing(P){
+  const ov=P.ov; let hover=null, move=null;
+  P.el.addEventListener("mousemove",ev=>{ if(tool!=="cursor"||move) return; const {x,y}=paneXY(P,ev); hover=hitTest(P,x,y);
+    ov.style.pointerEvents=hover?"auto":""; ov.style.cursor=hover?(hover.part==="body"?"move":"pointer"):""; },true);
+  ov.addEventListener("mousedown",ev=>{ setActive(panes.indexOf(P));
+    const {x,y}=paneXY(P,ev); const t=timeAtX(P,x), p=P.series.coordinateToPrice(y); if(t==null||p==null) return;
+    if(tool==="cursor"){ const h=hitTest(P,x,y); if(!h) return; ev.preventDefault(); const s=DR[h.i]; move={h,s,t0:t,p0:p,orig:{...s}}; ov.style.pointerEvents="auto"; return; }
+    ev.preventDefault();
+    if(tool==="erase"){ const h=hitTest(P,x,y); if(h){DR.splice(h.i,1);saveDR();drawAll();} return; }
+    const c=$("#drawColor").value;
+    if(tool==="hline"){ DR.push({type:"hline",p1:p,c}); saveDR(); drawAll(); return; }
+    dragging={P,s:{type:tool,t1:t,p1:p,t2:t,p2:p,c}}; });
+  ov.addEventListener("mousemove",ev=>{ const {x,y}=paneXY(P,ev); const t=timeAtX(P,x), p=P.series.coordinateToPrice(y); if(t==null||p==null) return;
+    if(move){ const {s,orig,h}=move, dt=t-move.t0, dp=p-move.p0;
+      if(s.type==="hline") s.p1=orig.p1+dp;
+      else if(h.part==="a"){s.t1=orig.t1+dt;s.p1=orig.p1+dp;} else if(h.part==="b"){s.t2=orig.t2+dt;s.p2=orig.p2+dp;}
+      else {s.t1=orig.t1+dt;s.t2=orig.t2+dt;s.p1=orig.p1+dp;s.p2=orig.p2+dp;}
+      drawAll(); return; }
+    if(!dragging||dragging.P!==P) return; dragging.s.t2=t; dragging.s.p2=p; requestAnimationFrame(P.draw); });
+  const finish=()=>{ if(move){ move=null; saveDR(); ov.style.pointerEvents=""; drawAll(); return; }
+    if(!dragging||dragging.P!==P) return; const s=dragging.s; dragging=null; if(Math.abs(s.t2-s.t1)>0||Math.abs(s.p2-s.p1)>0){DR.push(s);saveDR();} drawAll(); };
+  ov.addEventListener("mouseup",finish); ov.addEventListener("mouseleave",finish);
+}
+const drawAll=()=>panes.forEach(p=>requestAnimationFrame(p.draw));
+setInterval(drawAll,250);
+$$("#layersPop .ly").forEach(c=>c.onchange=()=>{$("#lyAll").checked=$$("#layersPop .ly").every(x=>x.checked); drawAll();});
+$("#lyAll").onchange=e=>{$$("#layersPop .ly").forEach(c=>c.checked=e.target.checked); drawAll();};
+
+/* ---------- controls ---------- */
+TFS.forEach(([tf])=>{const b=document.createElement("button");b.textContent=tf;b.dataset.tf=tf;b.type="button";b.onclick=()=>panes[active].setTF(tf,true);$("#tfs").appendChild(b);});
+$$("#layout button").forEach(b=>b.onclick=()=>setLayout(+b.dataset.n));
+document.addEventListener("keydown",e=>{ if(["INPUT","SELECT"].includes(e.target.tagName)) return; const P=panes[active]; if(!P) return; const i=TFS.findIndex(x=>x[0]===P.tf);
+  if(e.key==="ArrowUp"&&i<TFS.length-1)P.setTF(TFS[i+1][0],true); if(e.key==="ArrowDown"&&i>0)P.setTF(TFS[i-1][0],true);
+  if(!R.on) return; if(e.key===" "){e.preventDefault();rpPlay();} if(e.key==="ArrowRight"){rpPause();rpStep();} if(e.key==="ArrowLeft")rpBack(); });
+$("#goto").onchange=e=>{ if(!e.target.value) return; const dDisp=Date.UTC(...e.target.value.split("-").map((v,i)=>i===1?+v-1:+v))/1000; const t=unshift(dDisp);
+  panes.forEach(P=>{const sec=secOf(P.tf); const n=P.tf==="1W"?26:P.tf==="1D"||P.tf==="Midnight"?40:120; P.goto(t-sec*n/2,t+sec*n/2);}); };
+$("#latest").onclick=()=>panes.forEach(P=>P.chart.timeScale().scrollToRealTime());
+$("#tz").onchange=e=>{ TZ=e.target.value; try{localStorage.setItem("tz",TZ);}catch(e2){} panes.forEach(P=>P.setTF(P.tf,true)); rpUpdateNow(); };
+$("#file").onchange=async e=>{
+  for(const f of e.target.files){const txt=await f.text(); const m=f.name.match(/_(1m|2m|3m|5m|15m|1h|2h|4h|1D|1W|1D_midnight_open)\.csv$/i);
+    const rows=parseCSV(txt); if(!rows.length) continue;
+    if(!m||m[1]==="1m"){m1=rows;cache={};loaded={};} else loaded[m[1]==="1D_midnight_open"?"Midnight":m[1]]=rows;}
+  panes.forEach(P=>P.setTF(P.tf,false)); };
+// theme
+const THEMES=["auto","dark","light"]; let themeI=0; try{themeI=Math.max(0,THEMES.indexOf(localStorage.getItem("theme")||"auto"));}catch(e){}
+function applyTheme(){ const th=THEMES[themeI]; if(th==="auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme",th);
+  $("#themeBtn").textContent=(th==="dark"?"☾ Dark":th==="light"?"☀ Light":"◐ Auto"); panes.forEach(P=>P.theme()); drawAll(); }
+$("#themeBtn").onclick=()=>{themeI=(themeI+1)%3; try{localStorage.setItem("theme",THEMES[themeI]);}catch(e){} applyTheme();};
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>applyTheme());
+
+/* ---------- trades panel ---------- */
+(function(){
+  const T=TR.trades, wins=T.filter(x=>x.pnl>0), losses=T.filter(x=>x.pnl<=0); const sum=(a,f)=>a.reduce((s,x)=>s+f(x),0);
+  const gross=sum(T,x=>x.gross), fees=sum(T,x=>x.fees), net=gross-fees+TR.funding, gw=sum(wins,x=>x.pnl), gl=-sum(losses,x=>x.pnl);
+  let peak=0,dd=0,c=0; for(const x of T){c+=x.pnl; peak=Math.max(peak,c); dd=Math.max(dd,peak-c);}
+  const L=T.filter(x=>x.dir==="long"), S=T.filter(x=>x.dir==="short"); const holds=T.map(x=>x.hold_min).sort((a,b)=>a-b), med=holds[Math.floor(holds.length/2)];
+  const best=T.reduce((a,b)=>b.pnl>a.pnl?b:a), worst=T.reduce((a,b)=>b.pnl<a.pnl?b:a); const F=v=>(v<0?"-":"+")+"$"+Math.abs(v).toFixed(2);
+  const St=[["Trades",T.length],["Win rate",(100*wins.length/T.length).toFixed(0)+"%"],["Net P/L",F(net)],["Gross P/L",F(gross)],["Fees + GST","-$"+fees.toFixed(2)],["Funding",F(TR.funding)],["Avg win",F(gw/Math.max(1,wins.length))],["Avg loss","-$"+(gl/Math.max(1,losses.length)).toFixed(2)],["Profit factor",(gl?gw/gl:0).toFixed(2)],["Max drawdown","-$"+dd.toFixed(2)],["Longs",L.length+" · "+F(sum(L,x=>x.pnl))],["Shorts",S.length+" · "+F(sum(S,x=>x.pnl))],["Median hold",med+" min"],["Best",F(best.pnl)+" ("+best.entry_time.slice(5,10)+")"],["Worst",F(worst.pnl)+" ("+worst.entry_time.slice(5,10)+")"]];
+  $("#stats").innerHTML=St.map(([k,v])=>`<div><b>${v}</b><span>${k}</span></div>`).join("");
+  $("#rules").innerHTML=`<p><b>Your PAXG/XAUT trades on Delta Exchange, ${T[0].entry_time.slice(0,10)} to ${T[T.length-1].exit_time.slice(0,10)}, plotted on spot XAU/USD.</b></p><p>Direction, size and P/L are reconstructed from the ledger (fees at 0.01% + 18% GST, cashflow = realised P/L). Entry/exit prices shown are spot gold at the fill minute, so they can differ by a few dollars from your PAXG/XAUT fills. Dots mark partial exits.</p>`;
+  const tb=$("#ttab tbody");
+  T.forEach(x=>{const tr=document.createElement("tr"); tr.className=x.pnl>0?"w":"l";
+    tr.innerHTML=`<td>${x.entry_time.slice(5,16)}</td><td>${x.sym.slice(0,4)}</td><td>${x.dir}</td><td>${x.entry.toFixed(1)}</td><td>${x.exit.toFixed(1)}</td><td>${x.oz.toFixed(2)}</td><td>${x.hold_min}m</td><td>${F(x.pnl)}</td><td>${F(x.cum)}</td>`;
+    tr.onclick=()=>{ if(R.on) return; panes.forEach(P=>{const span=Math.max(x.tX-x.tE,secOf(P.tf)*10); P.goto(x.tE-span*1.2,x.tX+span*1.2);}); };
+    tb.appendChild(tr);});
+})();
+$("#layersBtn").onclick=e=>{e.stopPropagation(); $("#layersPop").hidden=!$("#layersPop").hidden;};
+document.addEventListener("click",e=>{ if(!e.target.closest(".dd")) $("#layersPop").hidden=true; });
+$("#helpBtn").onclick=()=>{ $("footer").hidden=!$("footer").hidden; };
+function toggleFull(){ if(document.fullscreenElement) document.exitFullscreen().catch(()=>{}); else if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{}); setTimeout(drawAll,400); }
+function setFocus(on){ document.body.classList.toggle("focus",on); setTimeout(drawAll,300); }
+$("#fullBtn").onclick=toggleFull; $("#exitFocus").onclick=()=>setFocus(false);
+document.addEventListener("fullscreenchange",()=>{ $("#fullBtn").textContent=document.fullscreenElement?"⛶ Exit full":"⛶ Full"; setTimeout(drawAll,400); });
+document.addEventListener("keydown",e=>{ if(["INPUT","SELECT"].includes(e.target.tagName)) return; if(e.key==="f") toggleFull(); if(e.key==="F") setFocus(!document.body.classList.contains("focus")); if(e.key==="Escape"&&document.body.classList.contains("focus")) setFocus(false); });
+$("#tradesBtn").onclick=()=>{$("#drawer").hidden=!$("#drawer").hidden;}; $("#drawerClose").onclick=()=>{$("#drawer").hidden=true;};
+
+/* ---------- replay ---------- */
+function rpUpdateNow(){const b=m1[R.idx-1]; $("#rpNow").textContent=b?fmt(shift(b.time))+" ("+$("#tz").selectedOptions[0].text+")":"start";}
+function rpSet(){ const v=$("#rpStart").value; if(!v) return;
+  const tD=Date.UTC(+v.slice(0,4),+v.slice(5,7)-1,+v.slice(8,10),+v.slice(11,13),+v.slice(14,16))/1000; const t=unshift(tD);
+  let i=m1.findIndex(b=>b.time>=t); if(i<0) i=m1.length; R.idx=Math.max(1,i); rpPause(); panes.forEach(P=>P.setTF(P.tf,false)); rpUpdateNow(); }
+function rpAdvanceTo(n){ for(;R.idx<n&&R.idx<m1.length;R.idx++){ const r=m1[R.idx]; panes.forEach(P=>P.applyMinute(r)); } panes.forEach(P=>P.follow()); rpUpdateNow(); }
+function rpStep(){ if(R.idx>=m1.length){rpPause();return;} const f=bucketFn(panes[active].tf); const b0=f(m1[R.idx].time); let n=R.idx; while(n<m1.length&&f(m1[n].time)===b0) n++; rpAdvanceTo(n); }
+function rpBack(){ if(R.idx<=1) return; const f=bucketFn(panes[active].tf); const b=f(m1[R.idx-1].time); let i=R.idx-1; while(i>0&&f(m1[i-1].time)===b) i--; R.idx=Math.max(1,i); rpPause(); panes.forEach(P=>P.setTF(P.tf,true)); rpUpdateNow(); }
+function rpPlay(){ if(R.timer){rpPause();return;} const sp=+$("#rpSpeed").value; $("#rpPlay").textContent="❚❚"; $("#rpPlay").classList.add("playing"); R.timer=setInterval(rpStep,1000/sp); }
+function rpPause(){ clearInterval(R.timer); R.timer=null; $("#rpPlay").textContent="▶"; $("#rpPlay").classList.remove("playing"); }
+$("#replayBtn").onclick=()=>{ R.on=true; $("#rp").hidden=false; $("#replayBtn").textContent="Replay on";
+  if(!$("#rpStart").value){ const t=m1[Math.floor(m1.length*0.5)].time; $("#rpStart").value=new Date(shift(t)*1000).toISOString().slice(0,16);} rpSet(); };
+$("#rpGo").onclick=rpSet; $("#rpStep").onclick=()=>{rpPause();rpStep();}; $("#rpBack").onclick=rpBack; $("#rpPlay").onclick=rpPlay;
+$("#rpSpeed").onchange=()=>{if(R.timer){rpPause();rpPlay();}};
+$("#rpExit").onclick=()=>{ rpPause(); R.on=false; $("#rp").hidden=true; $("#replayBtn").textContent="Replay"; panes.forEach(P=>P.setTF(P.tf,true)); };
+
+/* ---------- persistence (IndexedDB) ---------- */
+const DB={db:null,dirty:new Map()};
+function idb(){ return new Promise((res,rej)=>{ if(DB.db) return res(DB.db); const r=indexedDB.open("goldchart",1); r.onupgradeneeded=()=>{r.result.createObjectStore("m1",{keyPath:"time"});}; r.onsuccess=()=>{DB.db=r.result;res(DB.db);}; r.onerror=()=>rej(r.error); }); }
+async function idbLoad(){ try{ const db=await idb(); return await new Promise((res,rej)=>{ const q=db.transaction("m1").objectStore("m1").getAll(); q.onsuccess=()=>res(q.result||[]); q.onerror=()=>rej(q.error); }); }catch(e){ return []; } }
+async function idbFlush(){ if(!DB.dirty.size) return; const rows=[...DB.dirty.values()]; DB.dirty.clear(); try{ const db=await idb(); const tx=db.transaction("m1","readwrite"); const st=tx.objectStore("m1"); rows.forEach(r=>st.put({time:r.time,open:r.open,high:r.high,low:r.low,close:r.close})); }catch(e){} }
+setInterval(idbFlush,4000); window.addEventListener("beforeunload",idbFlush);
+function remember(bar){ DB.dirty.set(bar.time,bar); }
+function insertBars(bars){ // merge historical bars (any order) into m1, keep sorted & unique
+  if(!bars.length) return 0; const have=new Map(m1.map(b=>[b.time,b])); let added=0;
+  for(const b of bars){ if(!have.has(b.time)){ have.set(b.time,b); added++; } }
+  if(added){ m1=[...have.values()].sort((a,b)=>a.time-b.time); cache={}; }
+  return added; }
+async function restoreSaved(){ const rows=await idbLoad(); const n=insertBars(rows); if(n) $("#range").textContent+=`, +${n.toLocaleString()} saved live bars`; return n; }
+// export merged 1-minute data
+$("#saveData").onclick=()=>{ let s="time_ny,open,high,low,close,volume\n"; for(const b of m1) s+=fmt(b.time)+","+b.open+","+b.high+","+b.low+","+b.close+","+(b.volume||0)+"\n";
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([s],{type:"text/csv"})); a.download="XAUUSD_1m_merged.csv"; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000); };
+
+/* ---------- gap fill via Twelve Data (spot XAU/USD, NY-time candles) ---------- */
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function fillGap(){
+  const key=$("#tdKey").value.trim(); if(!key){ setStatus("enter a Twelve Data key to fill gaps","err"); return; } try{localStorage.setItem("tdKey",key);}catch(e){}
+  if(/claude\.ai|anthropic/.test(location.host)){ setStatus("gap fill does not work from a claude.ai link","err"); return; }
+  const nowNY=utcToNy(Math.floor(Date.now()/1000)); let total=0, calls=0;
+  // find gaps: any jump > 90 min between consecutive bars after the built-in data start, plus the tail up to now
+  const gaps=[]; for(let i=1;i<m1.length;i++){ if(m1[i].time-m1[i-1].time>90*60){ const a=m1[i-1].time, b=m1[i].time; const wd=new Date(a*1000).getUTCDay(); if(!(wd===5&&b-a<60*3600)) gaps.push([a+60,b-60]); } }
+  if(nowNY-m1[m1.length-1].time>90*60) gaps.push([m1[m1.length-1].time+60,nowNY]);
+  if(!gaps.length){ setStatus("no gaps to fill",""); return; }
+  for(const [ga,gb] of gaps){ let from=ga;
+    while(from<gb){ const to=Math.min(gb,from+5000*60-60); if(calls&&calls%8===0) await sleep(61000); else if(calls) await sleep(1500);
+      setStatus(`filling gap… ${fmt(from)} → ${fmt(to)} NY (${total} bars so far)`);
+      let j; try{ const r=await fetchT(`https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1min&start_date=${encodeURIComponent(fmt(from)+":00")}&end_date=${encodeURIComponent(fmt(to)+":00")}&timezone=America/New_York&outputsize=5000&format=JSON&apikey=${encodeURIComponent(key)}`,20000); j=await r.json(); }catch(e){ setStatus("Twelve Data request failed: "+e.message,"err"); return; }
+      calls++;
+      if(j.status==="error"){ if(/no data|not available/i.test(j.message)){ from=to+60; continue; } setStatus("Twelve Data: "+j.message,"err"); return; }
+      const bars=(j.values||[]).map(v=>({time:Date.UTC(+v.datetime.slice(0,4),+v.datetime.slice(5,7)-1,+v.datetime.slice(8,10),+v.datetime.slice(11,13),+v.datetime.slice(14,16))/1000,open:+v.open,high:+v.high,low:+v.low,close:+v.close}));
+      const n=insertBars(bars); bars.forEach(remember); total+=n; from=to+60; }
+  }
+  await idbFlush(); if(!R.on) panes.forEach(P=>P.setTF(P.tf,true));
+  setStatus(total?`gap filled: ${total.toLocaleString()} candles added and saved`:"nothing new returned (check the key's plan covers XAU/USD 1-minute history)",total?"on":"err");
+}
+$("#tdFill").onclick=fillGap;
+
+/* ---------- live (Finnhub) ---------- */
+const LV={ws:null,on:false,retry:0};
+const nyNow=ms=>utcToNy(Math.floor(ms/1000));
+function setStatus(msg,cls){$("#fhStatus").textContent=msg; $("#dot").className="dot "+(cls||"");}
+function pushMinute(bar){ const last=m1[m1.length-1]; if(last&&bar.time<last.time) return;
+  if(last&&bar.time===last.time){last.high=Math.max(last.high,bar.high);last.low=Math.min(last.low,bar.low);last.close=bar.close;} else m1.push(bar);
+  remember(m1[m1.length-1]); cache={}; if(R.on) return; const src=m1[m1.length-1]; panes.forEach(P=>P.applyMinute(src)); }
+const fetchT=(url,ms=15000)=>{const c=new AbortController(); const id=setTimeout(()=>c.abort(),ms); return fetch(url,{signal:c.signal}).finally(()=>clearTimeout(id));};
+async function backfill(key){
+  const last=m1[m1.length-1]; let from=nyToUtc(last.time)+60, to=Math.floor(Date.now()/1000); if(to-from<60) return "up to date"; let got=0;
+  while(from<to){ const chunkTo=Math.min(to,from+20*86400);
+    const r=await fetchT(`https://finnhub.io/api/v1/forex/candle?symbol=OANDA:XAU_USD&resolution=1&from=${from}&to=${chunkTo}&token=${encodeURIComponent(key)}`);
+    if(r.status===403||r.status===401) return "history not included in this Finnhub plan"; if(!r.ok) return "history request failed ("+r.status+")";
+    const j=await r.json(); if(j.s!=="ok"||!j.t){from=chunkTo;continue;}
+    for(let i=0;i<j.t.length;i++) pushMinute({time:Math.floor(utcToNy(j.t[i])/60)*60,open:j.o[i],high:j.h[i],low:j.l[i],close:j.c[i]});
+    got+=j.t.length; from=chunkTo; setStatus("backfilling… "+got+" bars"); }
+  return got?"backfilled "+got.toLocaleString()+" bars":"no new history returned"; }
+function openWS(key){ const ws=new WebSocket("wss://ws.finnhub.io?token="+encodeURIComponent(key)); LV.ws=ws;
+  ws.onopen=()=>{LV.retry=0; ws.send(JSON.stringify({type:"subscribe",symbol:"OANDA:XAU_USD"})); setStatus("live: waiting for first tick","on");};
+  ws.onmessage=ev=>{const m=JSON.parse(ev.data); if(m.type!=="trade") return;
+    for(const d of m.data){ if(d.s!=="OANDA:XAU_USD") continue; const t=Math.floor(nyNow(d.t)/60)*60; pushMinute({time:t,open:d.p,high:d.p,low:d.p,close:d.p}); }
+    const p=m.data[m.data.length-1].p; setStatus("live  "+p.toFixed(2),"on");};
+  ws.onerror=()=>setStatus("connection error (check key / network)","err");
+  ws.onclose=()=>{ if(!LV.on) return; LV.retry++; setStatus("reconnecting…","err"); setTimeout(()=>openWS(key),Math.min(30000,2000*LV.retry)); }; }
+async function connect(){ const key=$("#fhKey").value.trim(); if(!key){setStatus("enter an API key","err");return;} try{localStorage.setItem("fhKey",key);}catch(e){}
+  if(/claude\.ai|anthropic/.test(location.host)){setStatus("live mode does not work from a claude.ai link","err");return;}
+  LV.on=true; setStatus("checking key…");
+  try{ const rq=await fetchT(`https://finnhub.io/api/v1/quote?symbol=AAPL&token=${encodeURIComponent(key)}`); if(rq.status===401||rq.status===403){setStatus("key rejected ("+rq.status+")","err");LV.on=false;return;} }
+  catch(e){ setStatus("could not reach finnhub.io ("+(e.name==="AbortError"?"timed out":e.message)+"). Check internet, VPN or ad-blocker.","err"); LV.on=false; return; }
+  let note; if($("#tdKey").value.trim()){ await fillGap(); note="gap filled via Twelve Data"; } else { try{ note=await backfill(key); }catch(e){ note="backfill skipped ("+(e.name==="AbortError"?"timed out":e.message)+")"; } }
+  if(!R.on) panes.forEach(P=>P.setTF(P.tf,true));
+  openWS(key); setTimeout(()=>{ if($("#fhStatus").textContent.startsWith("live: waiting")) setStatus("live: connected, "+note+". Ticks arrive when the market trades.","on"); },1500); }
+function disconnect(){ LV.on=false; if(LV.ws){LV.ws.close();LV.ws=null;} setStatus("not connected",""); }
+$("#liveBtn").onclick=()=>{ $("#lv").hidden=!$("#lv").hidden; try{const k=localStorage.getItem("fhKey"); if(k&&!$("#fhKey").value)$("#fhKey").value=k; const k2=localStorage.getItem("tdKey"); if(k2&&!$("#tdKey").value)$("#tdKey").value=k2;}catch(e){} };
+$("#fhConnect").onclick=connect; $("#fhDisconnect").onclick=disconnect; $("#fhKey").addEventListener("keydown",e=>{if(e.key==="Enter")connect();});
+window.goldChart={pushMinute,panes,resample:tf=>resample(tf),shift,unshift};
+
+/* ---------- boot ---------- */
+try{
+  let text; try{ const r=await fetch(DATA_URL,{cache:"no-cache"}); if(!r.ok) throw new Error("HTTP "+r.status); text=await r.text(); }
+  catch(e){ throw new Error("could not load "+DATA_URL+" ("+e.message+"). If you opened this file directly from disk, use a local server (python -m http.server) or GitHub Pages."); }
+  m1=parseCSV(text); $("#load").remove();
+  $("#range").textContent=`${m1.length.toLocaleString()} one-minute bars, ${fmt(m1[0].time).slice(0,10)} to ${fmt(m1[m1.length-1].time).slice(0,10)}`; await restoreSaved();
+  let n=1; try{n=+localStorage.getItem("layout")||1;}catch(e){} setLayout(n); applyTheme();
+  $("#goto").value="2026-09-21"; $("#goto").dispatchEvent(new Event("change"));
+}catch(err){ $("#load").innerHTML=err.message; }
+})();
+</script>
+</body>
+</html>
