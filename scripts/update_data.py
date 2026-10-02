@@ -18,17 +18,20 @@ NY = ZoneInfo("America/New_York")
 UA = {"User-Agent": "Mozilla/5.0 (gold-chart updater)"}
 BASE = "https://datafeed.dukascopy.com/datafeed/XAUUSD"
 
-def get(url, tries=4):
+STATS = {"ok": 0, "404": 0, "fail": 0}
+def get(url, tries=2):
+    """Fetch a Dukascopy file. Returns bytes, or None if it does not exist / could not be fetched."""
     for i in range(tries):
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=30) as r:
-                return r.read()
+            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=20) as r:
+                STATS["ok"] += 1; return r.read()
         except urllib.error.HTTPError as e:
-            if e.code == 404: return None
-            time.sleep(5 * (i + 1))
-        except Exception:
-            time.sleep(5 * (i + 1))
-    return None
+            if e.code == 404: STATS["404"] += 1; return None
+            print(f"  HTTP {e.code} for {url.split('XAUUSD/')[1]} (try {i+1}/{tries})", flush=True)
+            time.sleep(3)
+        except Exception as e:
+            print(f"  error {e} for {url.split('XAUUSD/')[1]} (try {i+1}/{tries})", flush=True); time.sleep(3)
+    STATS["fail"] += 1; return None
 
 def day_candles(d: date):
     """1-minute bid candles for a UTC day -> list of (utc_time, o, h, l, c, vol)."""
@@ -82,14 +85,15 @@ def main():
     while d < now.date():
         if d.weekday() == 5: d += timedelta(days=1); continue    # Saturday: no trading
         c = day_candles(d)
-        if c is None: print("no daily file yet for", d)
+        if c is None: print("no daily file yet for", d, flush=True)
         else:
             for t, o, h, l, cl, v in c:
                 rows[ny_key(t)] = [ny_key(t), f"{o:.3f}", f"{h:.3f}", f"{l:.3f}", f"{cl:.3f}", f"{v:.5f}"]
-            added += len(c); print("day", d, "candles", len(c))
-        time.sleep(2); d += timedelta(days=1)
+            added += len(c); print("day", d, "candles", len(c), flush=True)
+        time.sleep(1); d += timedelta(days=1)
+        if STATS["fail"] >= 6: print("Dukascopy is refusing requests from this machine (repeated 5xx). Stopping early; what was fetched will be saved.", flush=True); break
     today = now.date()
-    if today.weekday() != 5:
+    if today.weekday() != 5 and STATS["fail"] < 6:
         for hour in range(now.hour):
             c = hour_ticks_to_candles(today, hour)
             if not c: continue
@@ -99,7 +103,8 @@ def main():
     with CSV.open("w", newline="") as f:
         w = csv.writer(f); w.writerow(["time_ny", "open", "high", "low", "close", "volume"])
         for k in sorted(rows): w.writerow(rows[k])
-    print(f"done: {added} candles from daily files, {provisional} provisional candles for today; last = {max(rows)} NY")
+    print(f"done: {added} candles from daily files, {provisional} provisional candles for today; last = {max(rows)} NY; requests ok={STATS['ok']} missing={STATS['404']} failed={STATS['fail']}", flush=True)
+    if STATS["fail"] and added == 0 and provisional == 0: sys.exit(2)
 
 if __name__ == "__main__":
     main()
