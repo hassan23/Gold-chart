@@ -17,8 +17,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Fetch new candles from Dukascopy
-        run: python -u scripts/update_data.py
+      - name: Fetch new candles
+        env:
+          TWELVEDATA_KEY: ${{ secrets.TWELVEDATA_KEY }}
+        run: |
+          if [ -n "$TWELVEDATA_KEY" ]; then
+            echo "Using Twelve Data (secret TWELVEDATA_KEY is set)"
+            python -u scripts/update_twelvedata.py
+          else
+            echo "No TWELVEDATA_KEY secret: trying Dukascopy (often blocked from GitHub runners)"
+            python -u scripts/update_data.py
+          fi
       - name: Commit if the data changed
         run: |
           git config user.name "gold-data-bot"
