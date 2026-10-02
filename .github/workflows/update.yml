@@ -1,0 +1,26 @@
+name: Update gold data
+
+on:
+  schedule:
+    - cron: "7 * * * *"      # every hour at :07 UTC
+  workflow_dispatch:         # lets you run it by hand from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch new candles from Dukascopy
+        run: python scripts/update_data.py
+      - name: Commit if the data changed
+        run: |
+          git config user.name "gold-data-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data/XAUUSD_1m.csv
+          if git diff --cached --quiet; then echo "no change"; else git commit -m "data: update to $(tail -1 data/XAUUSD_1m.csv | cut -d, -f1) NY" && git push; fi
