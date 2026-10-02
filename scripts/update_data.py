@@ -44,8 +44,19 @@ def day_candles(d: date):
         if v > 0: out.append((base + timedelta(seconds=t), o/1000, h/1000, l/1000, c/1000, v))
     return out
 
+def fetch_hour(d: date, hour: int):
+    """Hourly tick file. Returns bytes, b"" for an empty hour, or None when Dukascopy has not published it yet (it answers 503)."""
+    url = f"{BASE}/{d.year}/{d.month-1:02d}/{d.day:02d}/{hour:02d}h_ticks.bi5"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=20) as r:
+            STATS["ok"] += 1; return r.read()
+    except urllib.error.HTTPError as e:
+        return None          # 503 = not published yet, 404 = no such hour
+    except Exception as e:
+        print(f"  error {e} for {hour:02d}h_ticks", flush=True); return None
+
 def hour_ticks_to_candles(d: date, hour: int):
-    raw = get(f"{BASE}/{d.year}/{d.month-1:02d}/{d.day:02d}/{hour:02d}h_ticks.bi5")
+    raw = fetch_hour(d, hour)
     if raw is None: return None
     if not raw: return []
     data = lzma.decompress(raw); base = datetime(d.year, d.month, d.day, hour, tzinfo=timezone.utc)
@@ -94,12 +105,18 @@ def main():
         if STATS["fail"] >= 6: print("Dukascopy is refusing requests from this machine (repeated 5xx). Stopping early; what was fetched will be saved.", flush=True); break
     today = now.date()
     if today.weekday() != 5 and STATS["fail"] < 6:
+        got = []
         for hour in range(now.hour):
             c = hour_ticks_to_candles(today, hour)
-            if not c: continue
+            if c is None:
+                print(f"today: hours {got[0]:02d}-{got[-1]:02d} fetched, {hour:02d}h not published yet" if got else f"today: {hour:02d}h not published yet", flush=True)
+                break
+            got.append(hour)
             for t, o, h, l, cl, v in c:
                 rows[ny_key(t)] = [ny_key(t), f"{o:.3f}", f"{h:.3f}", f"{l:.3f}", f"{cl:.3f}", f"{v:.5f}"]
             provisional += len(c); time.sleep(1)
+        else:
+            if got: print(f"today: hours {got[0]:02d}-{got[-1]:02d} fetched", flush=True)
     with CSV.open("w", newline="") as f:
         w = csv.writer(f); w.writerow(["time_ny", "open", "high", "low", "close", "volume"])
         for k in sorted(rows): w.writerow(rows[k])
