@@ -74,7 +74,10 @@ def main():
     last_key = max(rows); last_ny = datetime.strptime(last_key, "%Y-%m-%d %H:%M").replace(tzinfo=NY)
     last_utc = last_ny.astimezone(timezone.utc)
     now = datetime.now(timezone.utc)
-    d = (last_utc - timedelta(hours=1)).date()
+    import os
+    refetch = int(os.environ.get("REFETCH_DAYS", "0") or 0)   # re-download the last N days (replaces provisional candles)
+    d = (last_utc - timedelta(hours=1) - timedelta(days=refetch)).date()
+    if refetch: print(f"re-fetching the last {refetch} day(s) from {d}")
     added = 0; provisional = 0
     while d < now.date():
         if d.weekday() == 5: d += timedelta(days=1); continue    # Saturday: no trading
