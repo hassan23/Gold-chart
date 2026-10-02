@@ -44,4 +44,4 @@ Access is the free option.
 ## Running locally instead
 
 `python -m http.server 8000` inside this folder, then open `http://localhost:8000/`. Run
-`python scripts/update_data.py` whenever you want to top up the data (Python 3.9+, no extra packages).
+`python scripts/update_data.py` whenever you want to top up the data (Python 3.9+, no extra packages).   
