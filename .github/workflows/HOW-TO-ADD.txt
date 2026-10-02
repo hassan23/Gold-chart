@@ -1,0 +1,26 @@
+These two files must end up at this exact path in your repository:
+
+    .github/workflows/update.yml      (the hourly data download)
+    .github/workflows/pages.yml       (publishing; skip it if your Pages site already works)
+
+GitHub only runs them from a folder named ".github" (with the dot). Your computer hides
+dot-folders, so this zip uses a visible folder name. Choose either way to add them:
+
+WAY 1 (recommended, 1 minute): paste as a new file
+  1. In your repository on GitHub click  Add file -> Create new file
+  2. In the name box type:   .github/workflows/update.yml
+     (as you type each "/" GitHub turns it into a folder)
+  3. Open update.yml from this zip in any text editor, select all, copy, paste into GitHub's editor
+  4. Commit changes
+
+WAY 2: upload, then move
+  1. Add file -> Upload files -> drag the whole "github-workflows" folder in -> Commit
+  2. Open github-workflows/update.yml on GitHub, click the pencil (Edit)
+  3. Click into the filename box at the top. Press Backspace until the "github-workflows/" part
+     disappears, then type:  .github/workflows/update.yml
+  4. Commit changes. Repeat for pages.yml if you need it, then delete the empty github-workflows folder.
+
+AFTER ADDING (required once)
+  Settings -> Actions -> General -> Workflow permissions -> "Read and write permissions" -> Save
+  Actions tab -> "Update gold data" -> Run workflow
+  A green run means the CSV is now updated to the current hour, and it will repeat every hour.
