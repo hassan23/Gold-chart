@@ -55,7 +55,7 @@ input[type=color]{width:28px;height:24px;padding:0;border:1px solid var(--line);
 #ttab td{padding:5px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
 #ttab tr{cursor:pointer}#ttab tbody tr:hover{background:var(--bg)}#ttab .w{color:var(--up)}#ttab .l{color:var(--dn)}
 @media (max-width:700px){#drawer{position:absolute;right:0;top:0;bottom:0;z-index:5;max-width:92vw}#panes.l2,#panes.l4{grid-template-columns:1fr;grid-template-rows:none}}
-.dd{position:relative}.pop{position:absolute;top:100%;left:0;z-index:30;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px 12px;display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12.5px;color:var(--mut);min-width:340px;box-shadow:0 8px 24px rgba(0,0,0,.25)}.pop[hidden]{display:none}.pop .sep{display:none}.pop>span{grid-column:1/-1;color:var(--acc);font-weight:600;margin-top:4px}
+.dd{position:relative}.pop{position:absolute;top:100%;left:0;z-index:30;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px 12px;display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12.5px;color:var(--mut);min-width:340px;box-shadow:0 8px 24px rgba(0,0,0,.25)}.pop[hidden]{display:none}.pop .sep{display:none}.pop input[type=number]{background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:4px;padding:2px 4px;font:12px var(--body)}.pop>span{grid-column:1/-1;color:var(--acc);font-weight:600;margin-top:4px}
 body.focus header,body.focus #toolrow,body.focus footer{display:none}body.focus #exitFocus{display:flex}
 #exitFocus{display:none;position:fixed;top:6px;right:80px;z-index:40}
 #load{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--mut);font-size:14px;background:var(--bg)}
@@ -79,19 +79,29 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-radius:3px;padding
   <button class="b" id="themeBtn" type="button" title="Theme: auto / dark / light">◐ Auto</button>
 </header>
 <div class="bar" id="toolrow">
+  <div class="dd"><button class="b" id="emaBtn" type="button">EMA ▾</button>
+    <div class="pop" id="emaPop" hidden>
+      <span>Exponential moving averages (per pane timeframe)</span>
+      <label><input type="checkbox" class="emaOn" data-i="0"> EMA 1 <input type="number" class="emaN" data-i="0" value="9" min="2" max="500" style="width:62px"> <input type="color" class="emaC" data-i="0" value="#E9B930"></label>
+      <label><input type="checkbox" class="emaOn" data-i="1"> EMA 2 <input type="number" class="emaN" data-i="1" value="21" min="2" max="500" style="width:62px"> <input type="color" class="emaC" data-i="1" value="#3A9AD9"></label>
+      <label><input type="checkbox" class="emaOn" data-i="2"> EMA 3 <input type="number" class="emaN" data-i="2" value="50" min="2" max="500" style="width:62px"> <input type="color" class="emaC" data-i="2" value="#D64FA0"></label>
+      <label><input type="checkbox" class="emaOn" data-i="3"> EMA 4 <input type="number" class="emaN" data-i="3" value="200" min="2" max="500" style="width:62px"> <input type="color" class="emaC" data-i="3" value="#8B7CF0"></label>
+      <span>Crosses</span>
+      <label style="grid-column:1/-1"><input type="checkbox" id="emaCross"> mark where EMA 1 crosses EMA 2 (▲ up, ▼ down)</label>
+    </div></div>
   <div class="dd"><button class="b" id="layersBtn" type="button">Layers ▾</button>
     <div class="pop" id="layersPop" hidden>
-  <label><input type="checkbox" id="lyAll" checked> all</label><span class="sep"></span>
-  <label><input type="checkbox" class="ly" id="showBoxes" checked> trades</label>
-  <label><input type="checkbox" class="ly" id="lyAsia" checked> Asia</label>
-  <label><input type="checkbox" class="ly" id="lyLondon" checked> London</label>
-  <label><input type="checkbox" class="ly" id="lyNY" checked> New York</label>
-  <label><input type="checkbox" class="ly" id="lyLunch" checked> NY lunch (no trade)</label>
-  <label><input type="checkbox" class="ly" id="lyPD" checked> prev day H/L</label>
-  <label><input type="checkbox" class="ly" id="lyMid" checked> midnight NY</label>
-  <label><input type="checkbox" class="ly" id="lyClock" checked> clock findings</label><span class="sep"></span>
+  <label><input type="checkbox" id="lyAll"> all</label><span class="sep"></span>
+  <label><input type="checkbox" class="ly" id="showBoxes"> trades</label>
+  <label><input type="checkbox" class="ly" id="lyAsia"> Asia</label>
+  <label><input type="checkbox" class="ly" id="lyLondon"> London</label>
+  <label><input type="checkbox" class="ly" id="lyNY"> New York</label>
+  <label><input type="checkbox" class="ly" id="lyLunch"> NY lunch (no trade)</label>
+  <label><input type="checkbox" class="ly" id="lyPD"> prev day H/L</label>
+  <label><input type="checkbox" class="ly" id="lyMid"> midnight NY</label>
+  <label><input type="checkbox" class="ly" id="lyClock"> clock findings</label><span class="sep"></span>
   <span>Camarilla</span>
-  <label><input type="checkbox" class="ly" id="lyCamD" checked> daily</label>
+  <label><input type="checkbox" class="ly" id="lyCamD"> daily</label>
   <label><input type="checkbox" class="ly" id="lyCamW"> weekly</label>
   <label><input type="checkbox" class="ly" id="lyCamM"> monthly</label>
   </div></div>
@@ -131,6 +141,7 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-radius:3px;padding
   <label>Twelve Data key <input type="password" id="tdKey" placeholder="for filling gaps (free key)" size="22" autocomplete="off"></label>
   <button class="b" id="tdFill" type="button" title="Fetch missing 1-minute candles from Twelve Data up to now">Fill gap</button>
   <button class="b" id="saveData" type="button" title="Download all 1-minute candles (built-in + live + filled) as CSV">Save data</button>
+  <button class="b" id="clearSaved" type="button" title="Delete the live candles saved in this browser (the CSV is not affected)">Clear saved</button>
   <span class="hint">Keys stay in this browser. Live candles are stored here too, so they survive a refresh.</span>
 </div>
 <div id="wrap">
@@ -277,11 +288,12 @@ function makePane(tf){
     const vr=chart.timeScale().getVisibleRange(); series.setData(P.bars.map(b=>disp(b,P.tf))); const N=140;
     if(keep&&vr){const c=secOf(tf)>=86400?(vr.from+vr.to)/2:unshift((vr.from+vr.to)/2); let i=P.bars.findIndex(b=>b.time>=c); if(i<0)i=P.bars.length-1; let to=Math.min(i+N/2,P.bars.length+5); chart.timeScale().setVisibleLogicalRange({from:to-N,to});}
     else chart.timeScale().setVisibleLogicalRange({from:P.bars.length-N,to:P.bars.length+5});
-    if(P.last()) P.legend(disp(P.last(),P.tf)); if(R.on) P.follow(); requestAnimationFrame(P.draw); if(panes[active]===P) syncTFButtons(); };
+    if(P.last()) P.legend(disp(P.last(),P.tf)); P.indicators(); if(R.on) P.follow(); requestAnimationFrame(P.draw); if(panes[active]===P) syncTFButtons(); };
   P.applyMinute=r=>{ const f=bucketFn(P.tf), k=f(r.time), lb=P.last();
+    let newBar=false;
     if(lb&&lb.time===k){lb.high=Math.max(lb.high,r.high);lb.low=Math.min(lb.low,r.low);lb.close=r.close;}
-    else if(lb&&k<lb.time) return; else P.bars.push(P.tf==="1m"?r:{time:k,open:r.open,high:r.high,low:r.low,close:r.close});
-    series.update(disp(P.last(),P.tf)); P.legend(disp(P.last(),P.tf)); };
+    else if(lb&&k<lb.time) return; else { P.bars.push(P.tf==="1m"?r:{time:k,open:r.open,high:r.high,low:r.low,close:r.close}); newBar=true; }
+    series.update(disp(P.last(),P.tf)); P.legend(disp(P.last(),P.tf)); P.indicatorsLive(newBar); };
   P.follow=()=>{ const lr=chart.timeScale().getVisibleLogicalRange(); if(!lr) return; const w=lr.to-lr.from, n=P.bars.length-1; if(n>lr.to-2||n<lr.from) chart.timeScale().setVisibleLogicalRange({from:n-w*0.75,to:n+w*0.25}); };
   P.xOf=time=>{ const bars=P.bars; let lo=0,hi=bars.length-1; while(lo<hi){const m=(lo+hi)>>1; if(bars[m].time<time) lo=m+1; else hi=m;}
     let i=lo; if(i>0&&bars[i].time>time) i=i-1+(time-bars[i-1].time)/Math.max(1,bars[i].time-bars[i-1].time); else if(i===bars.length-1&&time>bars[i].time) i+= (time-bars[i].time)/secOf(P.tf);
@@ -289,13 +301,32 @@ function makePane(tf){
   P.visibleNY=()=>{ const lr=chart.timeScale().getVisibleLogicalRange(); if(!lr||!P.bars.length) return null; const n=P.bars.length; const ia=Math.max(0,Math.min(n-1,Math.floor(lr.from))), ib=Math.max(0,Math.min(n-1,Math.ceil(lr.to)));
     return {from:P.bars[ia].time,to:P.bars[ib].time+secOf(P.tf)*Math.max(1,lr.to-ib+1)}; };
   P.draw=()=>{ if(P.dead) return; try{drawOverlays(P);}catch(e){} };
+  P.ema=[null,null,null,null]; P.emaPrev=[0,0,0,0]; P.emaLast=[0,0,0,0];
+  P.indicators=()=>{ // full recompute for current bars
+    const big=secOf(P.tf)>=86400;
+    for(let i=0;i<4;i++){ const cfg=EMA.cfg[i];
+      if(!cfg.on){ if(P.ema[i]){chart.removeSeries(P.ema[i]);P.ema[i]=null;} continue; }
+      if(!P.ema[i]) P.ema[i]=chart.addLineSeries({lineWidth:1.5,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
+      P.ema[i].applyOptions({color:cfg.c});
+      const n=cfg.n, a=2/(n+1); let e=null; const out=[];
+      for(const b of P.bars){ e=e===null?b.close:a*b.close+(1-a)*e; out.push({time:big?b.time:shift(b.time),value:e}); }
+      P.emaLast[i]=e; P.emaPrev[i]=out.length>1?out[out.length-2].value:e; P.ema[i].setData(out); P._emaOut=P._emaOut||{}; P._emaOut[i]=out; }
+    // crosses between EMA1 and EMA2
+    if(EMA.cross&&EMA.cfg[0].on&&EMA.cfg[1].on&&P._emaOut&&P._emaOut[0]&&P._emaOut[1]){ const A=P._emaOut[0],B=P._emaOut[1]; const mk=[]; const start=Math.max(1,A.length-3000);
+      for(let k=start;k<A.length;k++){ const d0=A[k-1].value-B[k-1].value, d1=A[k].value-B[k].value; if(d0<=0&&d1>0) mk.push({time:A[k].time,position:"belowBar",color:"#26A69A",shape:"arrowUp",text:""}); else if(d0>=0&&d1<0) mk.push({time:A[k].time,position:"aboveBar",color:"#EF5350",shape:"arrowDown",text:""}); }
+      series.setMarkers(mk); } else series.setMarkers([]); };
+  P.indicatorsLive=(newBar)=>{ // cheap update of the last EMA point on a live/replay minute
+    const big=secOf(P.tf)>=86400; const lb=P.last(); if(!lb) return;
+    for(let i=0;i<4;i++){ if(!P.ema[i]||!EMA.cfg[i].on) continue; const a=2/(EMA.cfg[i].n+1);
+      if(newBar){ P.emaPrev[i]=P.emaLast[i]; }
+      const e=a*lb.close+(1-a)*P.emaPrev[i]; P.emaLast[i]=e; P.ema[i].update({time:big?lb.time:shift(lb.time),value:e}); } };
   P.goto=(from,to)=>{const big=secOf(P.tf)>=86400; chart.timeScale().setVisibleRange({from:big?from:shift(from),to:big?to:shift(to)});};
   chart.subscribeCrosshairMove(p=>{const d=p.seriesData.get(series); if(d) P.legend(d); else if(P.last()) P.legend(disp(P.last(),P.tf));});
   chart.timeScale().subscribeVisibleLogicalRangeChange(()=>requestAnimationFrame(P.draw));
   P.ro=new ResizeObserver(()=>requestAnimationFrame(P.draw)); P.ro.observe(el);
   el.addEventListener("mousedown",()=>setActive(panes.indexOf(P)),true);
   P.theme=()=>{ chart.applyOptions({layout:{background:{type:"solid",color:css("--bg")},textColor:css("--mut")},grid:{vertLines:{color:css("--line")},horzLines:{color:css("--line")}},rightPriceScale:{borderColor:css("--line")},timeScale:{borderColor:css("--line")}});
-    series.applyOptions({upColor:css("--up"),downColor:css("--dn"),wickUpColor:css("--up"),wickDownColor:css("--dn")}); };
+    series.applyOptions({upColor:css("--up"),downColor:css("--dn"),wickUpColor:css("--up"),wickDownColor:css("--dn")}); P.indicators(); };
   attachDrawing(P); panes.push(P); return P;
 }
 function setActive(i){ active=i; panes.forEach((p,k)=>p.el.classList.toggle("active",k===i)); syncTFButtons(); }
@@ -319,6 +350,18 @@ function setLayout(n){
   $("#panes").className="l"+n; applyGrid(); $$("#layout button").forEach(b=>b.classList.toggle("on",+b.dataset.n===n));
   setActive(Math.min(active,n-1)); try{localStorage.setItem("layout",n);}catch(e){}
 }
+
+/* ---------- EMA settings (shared by all panes, saved) ---------- */
+const EMA={cfg:[{on:false,n:9,c:"#E9B930"},{on:false,n:21,c:"#3A9AD9"},{on:false,n:50,c:"#D64FA0"},{on:false,n:200,c:"#8B7CF0"}],cross:false};
+try{ const s=JSON.parse(localStorage.getItem("ema")||"null"); if(s){ EMA.cfg=s.cfg; EMA.cross=!!s.cross; } }catch(e){}
+function emaUI(){ $$(".emaOn").forEach(c=>c.checked=EMA.cfg[+c.dataset.i].on); $$(".emaN").forEach(c=>c.value=EMA.cfg[+c.dataset.i].n); $$(".emaC").forEach(c=>c.value=EMA.cfg[+c.dataset.i].c); $("#emaCross").checked=EMA.cross; }
+function emaRead(){ $$(".emaOn").forEach(c=>EMA.cfg[+c.dataset.i].on=c.checked); $$(".emaN").forEach(c=>EMA.cfg[+c.dataset.i].n=Math.max(2,Math.min(500,+c.value||2))); $$(".emaC").forEach(c=>EMA.cfg[+c.dataset.i].c=c.value); EMA.cross=$("#emaCross").checked;
+  try{localStorage.setItem("ema",JSON.stringify(EMA));}catch(e){} panes.forEach(P=>P.indicators()); $("#emaBtn").textContent="EMA"+(EMA.cfg.some(c=>c.on)?" ("+EMA.cfg.filter(c=>c.on).map(c=>c.n).join("/")+") ▾":" ▾"); }
+emaUI(); $$("#emaPop input").forEach(i=>i.addEventListener("change",emaRead));
+$("#emaBtn").onclick=e=>{e.stopPropagation(); $("#emaPop").hidden=!$("#emaPop").hidden; $("#layersPop").hidden=true;};
+// layers: saved state, default all off
+try{ const s=JSON.parse(localStorage.getItem("layers")||"null"); if(s) for(const id in s){ const el=document.getElementById(id); if(el) el.checked=s[id]; } }catch(e){}
+function saveLayers(){ const s={}; $$("#layersPop .ly").forEach(c=>s[c.id]=c.checked); try{localStorage.setItem("layers",JSON.stringify(s));}catch(e){} $("#lyAll").checked=$$("#layersPop .ly").every(x=>x.checked); }
 
 /* ---------- overlays ---------- */
 function drawOverlays(P){
@@ -445,8 +488,8 @@ function attachDrawing(P){
 }
 const drawAll=()=>panes.forEach(p=>requestAnimationFrame(p.draw));
 setInterval(drawAll,250);
-$$("#layersPop .ly").forEach(c=>c.onchange=()=>{$("#lyAll").checked=$$("#layersPop .ly").every(x=>x.checked); drawAll();});
-$("#lyAll").onchange=e=>{$$("#layersPop .ly").forEach(c=>c.checked=e.target.checked); drawAll();};
+$$("#layersPop .ly").forEach(c=>c.onchange=()=>{saveLayers(); drawAll();});
+$("#lyAll").onchange=e=>{$$("#layersPop .ly").forEach(c=>c.checked=e.target.checked); saveLayers(); drawAll();};
 
 /* ---------- controls ---------- */
 TFS.forEach(([tf])=>{const b=document.createElement("button");b.textContent=tf;b.dataset.tf=tf;b.type="button";b.onclick=()=>panes[active].setTF(tf,true);$("#tfs").appendChild(b);});
@@ -487,7 +530,7 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>
     tb.appendChild(tr);});
 })();
 $("#layersBtn").onclick=e=>{e.stopPropagation(); $("#layersPop").hidden=!$("#layersPop").hidden;};
-document.addEventListener("click",e=>{ if(!e.target.closest(".dd")) $("#layersPop").hidden=true; });
+document.addEventListener("click",e=>{ if(!e.target.closest(".dd")){ $("#layersPop").hidden=true; $("#emaPop").hidden=true; } });
 $("#helpBtn").onclick=()=>{ $("footer").hidden=!$("footer").hidden; };
 function toggleFull(){ if(document.fullscreenElement) document.exitFullscreen().catch(()=>{}); else if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{}); setTimeout(drawAll,400); }
 function setFocus(on){ document.body.classList.toggle("focus",on); setTimeout(drawAll,300); }
@@ -552,6 +595,7 @@ async function fillGap(){
   setStatus(total?`gap filled: ${total.toLocaleString()} candles added and saved`:"nothing new returned (check the key's plan covers XAU/USD 1-minute history)",total?"on":"err");
 }
 $("#tdFill").onclick=fillGap;
+$("#clearSaved").onclick=async()=>{ if(!confirm("Delete the live candles saved in this browser? The CSV in the repository is not affected.")) return; try{ const db=await idb(); await new Promise((res,rej)=>{const q=db.transaction("m1","readwrite").objectStore("m1").clear(); q.onsuccess=res; q.onerror=rej;}); DB.dirty.clear(); setStatus("saved live candles cleared; reload the page",""); }catch(e){ setStatus("could not clear: "+e.message,"err"); } };
 
 /* ---------- live (Finnhub) ---------- */
 const LV={ws:null,on:false,retry:0};
@@ -592,12 +636,17 @@ window.goldChart={pushMinute,panes,resample:tf=>resample(tf),shift,unshift};
 
 /* ---------- boot ---------- */
 try{
-  let text; try{ const r=await fetch(DATA_URL,{cache:"no-cache"}); if(!r.ok) throw new Error("HTTP "+r.status); text=await r.text(); }
-  catch(e){ throw new Error("could not load "+DATA_URL+" ("+e.message+"). If you opened this file directly from disk, use a local server (python -m http.server) or GitHub Pages."); }
+  let text=null; const tried=[];
+  for(const u of [DATA_URL,"data/XAUUSD_1m_hybrid.csv","XAUUSD_1m.csv","data/xauusd_1m.csv"]){
+    try{ const r=await fetch(u,{cache:"no-store"}); tried.push(u+" → "+(r.ok?"ok":"HTTP "+r.status)); if(r.ok){ text=await r.text(); break; } }
+    catch(e){ tried.push(u+" → "+e.message); }
+  }
+  if(text===null) throw new Error("Could not load the data file. Tried: "+tried.join("; ")+". The CSV must be at "+DATA_URL+" next to this index.html (same folder level), on the same branch GitHub Pages publishes. Open "+new URL(DATA_URL,location.href).href+" in a new tab to check.");
   m1=parseCSV(text); $("#load").remove();
   $("#range").textContent=`${m1.length.toLocaleString()} one-minute bars, ${fmt(m1[0].time).slice(0,10)} to ${fmt(m1[m1.length-1].time).slice(0,10)}`; await restoreSaved();
   let n=1; try{n=+localStorage.getItem("layout")||1;}catch(e){} setLayout(n); applyTheme();
-  $("#goto").value="2026-09-21"; $("#goto").dispatchEvent(new Event("change"));
+  panes.forEach(P=>P.chart.timeScale().scrollToRealTime()); $("#emaBtn").textContent="EMA"+(EMA.cfg.some(c=>c.on)?" ("+EMA.cfg.filter(c=>c.on).map(c=>c.n).join("/")+") ▾":" ▾");
+  try{ const k=localStorage.getItem("fhKey"); if(k){ $("#fhKey").value=k; const k2=localStorage.getItem("tdKey"); if(k2)$("#tdKey").value=k2; connect(); } else { $("#lv").hidden=false; setStatus("paste your Finnhub key once; it will connect automatically from then on",""); } }catch(e){}
 }catch(err){ $("#load").innerHTML=err.message; }
 })();
 </script>
