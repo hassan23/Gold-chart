@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Extend data/XAUUSD_1m.csv using Twelve Data (free key), for use from GitHub Actions where
-Dukascopy refuses requests. Needs the environment variable TWELVEDATA_KEY.
+"""Extend data/XAUUSD_1m.csv with new 1-minute XAU/USD candles from Twelve Data.
+Needs the environment variable TWELVEDATA_KEY (free key from twelvedata.com).
 
 - Fetches every 1-minute XAU/USD candle after the last one in the CSV, up to now.
 - Candles are requested in New York time, matching the CSV.
@@ -47,6 +47,8 @@ def main():
         vals = j.get("values", [])
         for v in vals:
             k = v["datetime"][:16]
+            t = datetime.strptime(k, "%Y-%m-%d %H:%M"); wd = t.weekday()
+            if wd == 5 or (wd == 4 and t.hour >= 17) or (wd == 6 and t.hour < 18): continue   # market closed
             if k not in rows: added += 1
             rows[k] = [k, f"{float(v['open']):.3f}", f"{float(v['high']):.3f}", f"{float(v['low']):.3f}", f"{float(v['close']):.3f}", v.get("volume", "0") or "0"]
         print(f"  {start:%m-%d %H:%M} -> {end:%m-%d %H:%M}: {len(vals)} candles", flush=True)
