@@ -306,7 +306,7 @@ function makePane(tf){
     else if(lb&&k<lb.time) return; else { P.bars.push(P.tf==="1m"?r:{time:k,open:r.open,high:r.high,low:r.low,close:r.close}); newBar=true; }
     series.update(disp(P.last(),P.tf)); P.legend(disp(P.last(),P.tf)); P.indicatorsLive(newBar); };
   P.follow=()=>{ const lr=chart.timeScale().getVisibleLogicalRange(); if(!lr) return; const w=lr.to-lr.from, n=P.bars.length-1; if(n>lr.to-2||n<lr.from) chart.timeScale().setVisibleLogicalRange({from:n-w*0.75,to:n+w*0.25}); };
-  P.xOf=time=>{ const bars=P.bars; let lo=0,hi=bars.length-1; while(lo<hi){const m=(lo+hi)>>1; if(bars[m].time<time) lo=m+1; else hi=m;}
+  P.xOf=time=>{ const bars=P.dataTimes||P.bars; let lo=0,hi=bars.length-1; while(lo<hi){const m=(lo+hi)>>1; if(bars[m].time<time) lo=m+1; else hi=m;}
     let i=lo; if(i>0&&bars[i].time>time) i=i-1+(time-bars[i-1].time)/Math.max(1,bars[i].time-bars[i-1].time); else if(i===bars.length-1&&time>bars[i].time) i+= (time-bars[i].time)/secOf(P.tf);
     const lr=chart.timeScale().getVisibleLogicalRange(); if(!lr) return null; const pw=el.clientWidth-chart.priceScale("right").width(); return (i-lr.from)/(lr.to-lr.from)*pw; };
   P.visibleNY=()=>{ const lr=chart.timeScale().getVisibleLogicalRange(); if(!lr||!P.bars.length) return null; const n=P.bars.length; const ia=Math.max(0,Math.min(n-1,Math.floor(lr.from))), ib=Math.max(0,Math.min(n-1,Math.ceil(lr.to)));
@@ -459,10 +459,10 @@ $("#drawClear").onclick=()=>{ if(DR.length&&confirm("Remove all "+DR.length+" dr
 document.addEventListener("keydown",e=>{ if(e.key==="Escape") setTool("cursor"); });
 function paneXY(P,ev){ const r=P.ov.getBoundingClientRect(); return {x:ev.clientX-r.left,y:ev.clientY-r.top}; }
 function timeAtX(P,x){ // pixel -> NY time via bar index (fractional, extrapolates past the ends)
-  const lr=P.chart.timeScale().getVisibleLogicalRange(); if(!lr||!P.bars.length) return null;
-  const pw=P.el.clientWidth-P.chart.priceScale("right").width(); const i=lr.from+(x/pw)*(lr.to-lr.from); const n=P.bars.length, sec=secOf(P.tf);
-  if(i<=0) return P.bars[0].time+i*sec; if(i>=n-1) return P.bars[n-1].time+(i-(n-1))*sec;
-  const k=Math.floor(i); return P.bars[k].time+(i-k)*(P.bars[k+1].time-P.bars[k].time); }
+  const B=P.dataTimes||P.bars; const lr=P.chart.timeScale().getVisibleLogicalRange(); if(!lr||!B.length) return null;
+  const pw=P.el.clientWidth-P.chart.priceScale("right").width(); const i=lr.from+(x/pw)*(lr.to-lr.from); const n=B.length, sec=secOf(P.tf);
+  if(i<=0) return B[0].time+i*sec; if(i>=n-1) return B[n-1].time+(i-(n-1))*sec;
+  const k=Math.floor(i); return B[k].time+(i-k)*(B[k+1].time-B[k].time); }
 function drawShape(P,s,temp){
   const {ctx,series}=P, w=P.el.clientWidth, pw=w-P.chart.priceScale("right").width();
   const y1=series.priceToCoordinate(s.p1), y2=s.p2!=null?series.priceToCoordinate(s.p2):null; if(y1==null) return;
@@ -497,11 +497,11 @@ function attachDrawing(P){
   let rpDrag=false;
   P.el.addEventListener("mousemove",ev=>{ if(tool!=="cursor"||move||rpDrag) return; const {x,y}=paneXY(P,ev); hover=hitTest(P,x,y); const rp=nearReplay(x);
     ov.style.pointerEvents=(hover||rp)?"auto":""; ov.style.cursor=rp?"col-resize":hover?(hover.part==="body"?"move":"pointer"):""; },true);
-  ov.addEventListener("mousedown",ev=>{ if(tool==="cursor"&&nearReplay(paneXY(P,ev).x)){ ev.preventDefault(); ev.stopImmediatePropagation(); rpPause(); rpDrag=true; ov.style.pointerEvents="auto"; } },true);
-  let rpPending=null;
-  ov.addEventListener("mousemove",ev=>{ if(!rpDrag) return; const {x}=paneXY(P,ev); const t=timeAtX(P,x); if(t==null) return;
-    rpPending=t; if(!P._rpRaf){ P._rpRaf=requestAnimationFrame(()=>{ P._rpRaf=null; const tt=rpPending; let lo=0,hi=m1.length; while(lo<hi){const mid=(lo+hi)>>1; if(m1[mid].time<=tt) lo=mid+1; else hi=mid;} rpSeek(Math.max(1,lo)); }); } });
-  const rpEnd=()=>{ if(rpDrag){ rpDrag=false; ov.style.pointerEvents=""; panes.forEach(Q=>{ Q.setTF(Q.tf,true); const lr=Q.chart.timeScale().getVisibleLogicalRange(); const w=lr?lr.to-lr.from:140, n=Q.bars.length-1; Q.chart.timeScale().setVisibleLogicalRange({from:n-w*0.75,to:n+w*0.25}); }); rpUpdateNow(); } };
+  ov.addEventListener("mousedown",ev=>{ if(tool==="cursor"&&nearReplay(paneXY(P,ev).x)){ ev.preventDefault(); ev.stopImmediatePropagation(); rpPause(); rpDrag=true; ov.style.pointerEvents="auto"; rpDragStart(); } },true);
+  let rpPending=null, lastX=0;
+  ov.addEventListener("mousemove",ev=>{ if(!rpDrag) return; const {x}=paneXY(P,ev); lastX=x; const t=timeAtX(P,x); if(t==null) return;
+    rpPending=t; if(!P._rpRaf){ P._rpRaf=requestAnimationFrame(()=>{ P._rpRaf=null; const tt=rpPending; let lo=0,hi=m1.length; while(lo<hi){const mid=(lo+hi)>>1; if(m1[mid].time<=tt) lo=mid+1; else hi=mid;} rpSeekDrag(Math.max(1,lo)); }); } });
+  const rpEnd=()=>{ if(rpDrag){ rpDrag=false; ov.style.pointerEvents=""; rpDragEnd(P,lastX); } };
   ov.addEventListener("mouseup",rpEnd); ov.addEventListener("mouseleave",rpEnd);
   ov.addEventListener("mousedown",ev=>{ setActive(panes.indexOf(P));
     const {x,y}=paneXY(P,ev); const t=timeAtX(P,x), p=P.series.coordinateToPrice(y); if(t==null||p==null) return;
@@ -580,6 +580,29 @@ function rpUpdateNow(){const b=m1[R.idx-1]; $("#rpNow").textContent=b?fmt(shift(
 function rpSet(){ const v=$("#rpStart").value; if(!v) return;
   const tD=Date.UTC(+v.slice(0,4),+v.slice(5,7)-1,+v.slice(8,10),+v.slice(11,13),+v.slice(14,16))/1000; const t=unshift(tD);
   let i=m1.findIndex(b=>b.time>=t); if(i<0) i=m1.length; R.idx=Math.max(1,i); rpPause(); panes.forEach(P=>P.setTF(P.tf,false)); rpUpdateNow(); }
+// --- scrubbing: keep the time axis still, move only the cursor (future bars become blank whitespace) ---
+function rpDragStart(){ panes.forEach(Q=>{ const pw=Q.el.clientWidth-Q.chart.priceScale("right").width(); const va=timeAtX(Q,0), vb=timeAtX(Q,pw); if(va==null||vb==null) return;
+  Q.full=applyDayFilter(loaded[Q.tf]||resample(Q.tf),Q.tf); Q.win={va,vb}; }); }
+function rpSeekDrag(n){ R.idx=Math.max(1,Math.min(m1.length,n)); const cur=m1[R.idx-1].time;
+  panes.forEach(Q=>{ if(!Q.full||!Q.win) return; const f=bucketFn(Q.tf), kcur=f(cur), big=secOf(Q.tf)>=86400, sec=secOf(Q.tf);
+    const a=Q.win.va-60*sec, b=Q.win.vb+60*sec; let i0=0,hi=Q.full.length; while(i0<hi){const m=(i0+hi)>>1; if(Q.full[m].time<a) i0=m+1; else hi=m;}
+    const data=[]; let last=null;
+    for(let i=i0;i<Q.full.length&&Q.full[i].time<=b;i++){ const bar=Q.full[i];
+      if(bar.time<kcur){ data.push(disp(bar,Q.tf)); last=bar; }
+      else if(bar.time===kcur){ // partial bar: minutes from bucket start up to the cursor
+        let lo=0,h2=m1.length; while(lo<h2){const m=(lo+h2)>>1; if(m1[m].time<kcur) lo=m+1; else h2=m;}
+        let p=null; for(let j=lo;j<R.idx;j++){ const r=m1[j]; if(!p) p={time:kcur,open:r.open,high:r.high,low:r.low,close:r.close}; else {p.high=Math.max(p.high,r.high);p.low=Math.min(p.low,r.low);p.close=r.close;} }
+        if(p){ data.push(disp(p,Q.tf)); last=p; } else data.push({time:big?bar.time:shift(bar.time)}); }
+      else data.push({time:big?bar.time:shift(bar.time)}); }
+    Q.bars=Q.full.filter(x=>x.time<kcur); if(last&&last.time===kcur) Q.bars.push(last);
+    Q.dataTimes=[]; for(let i=i0;i<Q.full.length&&Q.full[i].time<=b;i++) Q.dataTimes.push({time:Q.full[i].time});
+    Q.series.setData(data); if(last) Q.legend(disp(last,Q.tf));
+    Q.chart.timeScale().setVisibleRange({from:big?Q.win.va:shift(Q.win.va),to:big?Q.win.vb:shift(Q.win.vb)}); requestAnimationFrame(Q.draw); });
+  rpUpdateNow(); }
+function rpDragEnd(P,x){ // restore normal replay data; keep the cursor line under the mouse
+  const pw=P.el.clientWidth-P.chart.priceScale("right").width(); const frac=Math.max(.05,Math.min(.95,x/pw));
+  panes.forEach(Q=>{ const lr=Q.chart.timeScale().getVisibleLogicalRange(); const w=lr?lr.to-lr.from:140; Q.dataTimes=null; Q.setTF(Q.tf,true); const n=Q.bars.length-1; Q.chart.timeScale().setVisibleLogicalRange({from:n-frac*w,to:n+(1-frac)*w}); Q.full=null; Q.win=null; });
+  rpUpdateNow(); }
 function rpSeek(n){ R.idx=Math.max(1,Math.min(m1.length,n)); panes.forEach(P=>{ P.bars=applyDayFilter(resample(P.tf,m1.slice(0,R.idx)),P.tf); P.series.setData(P.bars.map(b=>disp(b,P.tf))); if(P.last()) P.legend(disp(P.last(),P.tf)); P.indicators(); requestAnimationFrame(P.draw); }); rpUpdateNow(); }
 function rpAdvanceTo(n){ for(;R.idx<n&&R.idx<m1.length;R.idx++){ const r=m1[R.idx]; panes.forEach(P=>P.applyMinute(r)); } panes.forEach(P=>{P.follow(); requestAnimationFrame(P.draw);}); rpUpdateNow(); }
 function rpStep(){ if(R.idx>=m1.length){rpPause();return;} const f=bucketFn(panes[active].tf); const b0=f(m1[R.idx].time); let n=R.idx; while(n<m1.length&&f(m1[n].time)===b0) n++; rpAdvanceTo(n); }
