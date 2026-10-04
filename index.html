@@ -89,6 +89,17 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-radius:3px;padding
       <span>Crosses</span>
       <label style="grid-column:1/-1"><input type="checkbox" id="emaCross"> mark where EMA 1 crosses EMA 2 (▲ up, ▼ down)</label>
     </div></div>
+  <div class="dd"><button class="b" id="daysBtn" type="button">Days ▾</button>
+    <div class="pop" id="daysPop" hidden>
+      <span>Weekdays (New York trading day, 17:00 → 17:00)</span>
+      <label><input type="checkbox" class="dayCk" data-d="0"> Monday</label><label><input type="checkbox" class="dayCk" data-d="1"> Tuesday</label>
+      <label><input type="checkbox" class="dayCk" data-d="2"> Wednesday</label><label><input type="checkbox" class="dayCk" data-d="3"> Thursday</label>
+      <label><input type="checkbox" class="dayCk" data-d="4"> Friday</label><span></span>
+      <span>Mode</span>
+      <label><input type="radio" name="dayMode" value="hide" checked> hide the selected days</label>
+      <label><input type="radio" name="dayMode" value="only"> show only the selected days</label>
+      <label style="grid-column:1/-1"><button class="b" id="daysClear" type="button">Clear selection</button></label>
+    </div></div>
   <div class="dd"><button class="b" id="layersBtn" type="button">Layers ▾</button>
     <div class="pop" id="layersPop" hidden>
   <label><input type="checkbox" id="lyAll"> all</label><span class="sep"></span>
@@ -128,7 +139,7 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-radius:3px;padding
   <button class="b" id="rpStep" type="button" title="Step forward one bar (→)">▶|</button>
   <label>Speed <select id="rpSpeed"><option value="1">1 bar/s</option><option value="2" selected>2 bars/s</option><option value="5">5 bars/s</option><option value="10">10 bars/s</option><option value="30">30 bars/s</option></select></label>
   <span class="sep"></span><span id="rpNow" class="now">not started</span>
-  <span class="hint">steps in the selected pane's timeframe</span>
+  <span class="hint">steps in the selected pane's timeframe · drag the gold line on the chart to scrub</span>
   <span class="sp"></span><button class="b" id="rpExit" type="button">Exit replay</button>
 </div>
 <div class="bar" id="lv" hidden>
@@ -284,12 +295,12 @@ function makePane(tf){
   P.legend=d=>{ if(!d) return; const ch=d.close-d.open, cls=ch>=0?"u":"d";
     P.lg.innerHTML=`<span class="tfl">${P.tf}</span><b>${fmt(d.time)}</b> &nbsp;<b>O</b> ${d.open.toFixed(2)} <b>H</b> ${d.high.toFixed(2)} <b>L</b> ${d.low.toFixed(2)} <b>C</b> ${d.close.toFixed(2)} <span class="${cls}">${ch>=0?"+":""}${ch.toFixed(2)} (${(ch/d.open*100).toFixed(2)}%)</span>`; };
   P.last=()=>P.bars[P.bars.length-1];
-  P.setTF=(tf,keep)=>{ P.tf=tf; P.bars=R.on?resample(tf,m1.slice(0,R.idx)):(loaded[tf]||resample(tf));
+  P.setTF=(tf,keep)=>{ P.tf=tf; P.bars=applyDayFilter(R.on?resample(tf,m1.slice(0,R.idx)):(loaded[tf]||resample(tf)),tf);
     const vr=chart.timeScale().getVisibleRange(); series.setData(P.bars.map(b=>disp(b,P.tf))); const N=140;
     if(keep&&vr){const c=secOf(tf)>=86400?(vr.from+vr.to)/2:unshift((vr.from+vr.to)/2); let i=P.bars.findIndex(b=>b.time>=c); if(i<0)i=P.bars.length-1; let to=Math.min(i+N/2,P.bars.length+5); chart.timeScale().setVisibleLogicalRange({from:to-N,to});}
     else chart.timeScale().setVisibleLogicalRange({from:P.bars.length-N,to:P.bars.length+5});
     if(P.last()) P.legend(disp(P.last(),P.tf)); P.indicators(); if(R.on) P.follow(); requestAnimationFrame(P.draw); if(panes[active]===P) syncTFButtons(); };
-  P.applyMinute=r=>{ const f=bucketFn(P.tf), k=f(r.time), lb=P.last();
+  P.applyMinute=r=>{ if(!dayVisible(r.time)) return; const f=bucketFn(P.tf), k=f(r.time), lb=P.last();
     let newBar=false;
     if(lb&&lb.time===k){lb.high=Math.max(lb.high,r.high);lb.low=Math.min(lb.low,r.low);lb.close=r.close;}
     else if(lb&&k<lb.time) return; else { P.bars.push(P.tf==="1m"?r:{time:k,open:r.open,high:r.high,low:r.low,close:r.close}); newBar=true; }
@@ -351,6 +362,20 @@ function setLayout(n){
   setActive(Math.min(active,n-1)); try{localStorage.setItem("layout",n);}catch(e){}
 }
 
+/* ---------- weekday filter ---------- */
+const DAYS={mode:"hide",sel:[]};
+try{ const s=JSON.parse(localStorage.getItem("days")||"null"); if(s){DAYS.mode=s.mode;DAYS.sel=s.sel;} }catch(e){}
+// weekday index 0=Mon..4=Fri of the NY trading day a bar belongs to (session 17:00->17:00 labelled by its end date)
+const tradeDow=t=>{ const d=new Date((t+7*3600)*1000).getUTCDay(); return (d+6)%7; };
+function dayVisible(t){ if(!DAYS.sel.length) return true; const w=tradeDow(t); const inSel=DAYS.sel.includes(w); return DAYS.mode==="only"?inSel:!inSel; }
+function applyDayFilter(bars,tf){ if(!DAYS.sel.length||tf==="1W") return bars; return bars.filter(b=>dayVisible(b.time)); }
+function daysUI(){ $$(".dayCk").forEach(c=>c.checked=DAYS.sel.includes(+c.dataset.d)); $$("input[name=dayMode]").forEach(r=>r.checked=r.value===DAYS.mode);
+  const names=["Mon","Tue","Wed","Thu","Fri"]; $("#daysBtn").textContent=DAYS.sel.length?("Days: "+(DAYS.mode==="only"?"only ":"hide ")+DAYS.sel.map(d=>names[d]).join(",")+" ▾"):"Days ▾"; }
+function daysRead(){ DAYS.sel=$$(".dayCk").filter(c=>c.checked).map(c=>+c.dataset.d); DAYS.mode=$("input[name=dayMode]:checked").value; try{localStorage.setItem("days",JSON.stringify(DAYS));}catch(e){} daysUI(); panes.forEach(P=>P.setTF(P.tf,true)); }
+daysUI(); $$("#daysPop input").forEach(i=>i.addEventListener("change",daysRead));
+$("#daysClear").onclick=()=>{ $$(".dayCk").forEach(c=>c.checked=false); daysRead(); };
+$("#daysBtn").onclick=e=>{e.stopPropagation(); $("#daysPop").hidden=!$("#daysPop").hidden; $("#layersPop").hidden=true; $("#emaPop").hidden=true;};
+
 /* ---------- EMA settings (shared by all panes, saved) ---------- */
 const EMA={cfg:[{on:false,n:9,c:"#E9B930"},{on:false,n:21,c:"#3A9AD9"},{on:false,n:50,c:"#D64FA0"},{on:false,n:200,c:"#8B7CF0"}],cross:false};
 try{ const s=JSON.parse(localStorage.getItem("ema")||"null"); if(s){ EMA.cfg=s.cfg; EMA.cross=!!s.cross; } }catch(e){}
@@ -408,6 +433,9 @@ function drawOverlays(P){
   }
   if(vr) drawCamarilla(P,vr,h,pw);
   drawUser(P);
+  if(R.on&&R.idx>0){ const xr=P.xOf(m1[R.idx-1].time); if(xr!=null&&xr>=0&&xr<=pw){ ctx.save(); ctx.strokeStyle=css("--acc"); ctx.lineWidth=2; ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(xr+.5,0); ctx.lineTo(xr+.5,h); ctx.stroke();
+      ctx.fillStyle=css("--acc"); ctx.beginPath(); ctx.moveTo(xr-7,0); ctx.lineTo(xr+7,0); ctx.lineTo(xr,10); ctx.closePath(); ctx.fill(); ctx.fillRect(xr-6,h-14,12,14);
+      ctx.font="600 10px "+css("--body"); ctx.fillStyle="#000"; ctx.fillText("⇔",xr-4,h-4); ctx.restore(); } }
   if(!$("#showBoxes").checked||secOf(P.tf)>=86400) return;
   for(const x of TR.trades){
     const x1=P.xOf(x.tE); let x2=P.xOf(x.tX); if(x1==null||x2==null) continue; x2=Math.max(x2,x1+5); if(x2<0||x1>pw) continue;
@@ -465,8 +493,16 @@ function hitTest(P,x,y){ let best=null,bd=8;
   return best; }
 function attachDrawing(P){
   const ov=P.ov; let hover=null, move=null;
-  P.el.addEventListener("mousemove",ev=>{ if(tool!=="cursor"||move) return; const {x,y}=paneXY(P,ev); hover=hitTest(P,x,y);
-    ov.style.pointerEvents=hover?"auto":""; ov.style.cursor=hover?(hover.part==="body"?"move":"pointer"):""; },true);
+  const nearReplay=x=>{ if(!R.on||R.idx<=0) return false; const xr=P.xOf(m1[R.idx-1].time); return xr!=null&&Math.abs(x-xr)<8; };
+  let rpDrag=false;
+  P.el.addEventListener("mousemove",ev=>{ if(tool!=="cursor"||move||rpDrag) return; const {x,y}=paneXY(P,ev); hover=hitTest(P,x,y); const rp=nearReplay(x);
+    ov.style.pointerEvents=(hover||rp)?"auto":""; ov.style.cursor=rp?"col-resize":hover?(hover.part==="body"?"move":"pointer"):""; },true);
+  ov.addEventListener("mousedown",ev=>{ if(tool==="cursor"&&nearReplay(paneXY(P,ev).x)){ ev.preventDefault(); ev.stopImmediatePropagation(); rpPause(); rpDrag=true; ov.style.pointerEvents="auto"; } },true);
+  let rpPending=null;
+  ov.addEventListener("mousemove",ev=>{ if(!rpDrag) return; const {x}=paneXY(P,ev); const t=timeAtX(P,x); if(t==null) return;
+    rpPending=t; if(!P._rpRaf){ P._rpRaf=requestAnimationFrame(()=>{ P._rpRaf=null; const tt=rpPending; let lo=0,hi=m1.length; while(lo<hi){const mid=(lo+hi)>>1; if(m1[mid].time<=tt) lo=mid+1; else hi=mid;} rpSeek(Math.max(1,lo)); }); } });
+  const rpEnd=()=>{ if(rpDrag){ rpDrag=false; ov.style.pointerEvents=""; panes.forEach(Q=>{ Q.setTF(Q.tf,true); const lr=Q.chart.timeScale().getVisibleLogicalRange(); const w=lr?lr.to-lr.from:140, n=Q.bars.length-1; Q.chart.timeScale().setVisibleLogicalRange({from:n-w*0.75,to:n+w*0.25}); }); rpUpdateNow(); } };
+  ov.addEventListener("mouseup",rpEnd); ov.addEventListener("mouseleave",rpEnd);
   ov.addEventListener("mousedown",ev=>{ setActive(panes.indexOf(P));
     const {x,y}=paneXY(P,ev); const t=timeAtX(P,x), p=P.series.coordinateToPrice(y); if(t==null||p==null) return;
     if(tool==="cursor"){ const h=hitTest(P,x,y); if(!h) return; ev.preventDefault(); const s=DR[h.i]; move={h,s,t0:t,p0:p,orig:{...s}}; ov.style.pointerEvents="auto"; return; }
@@ -530,7 +566,7 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>
     tb.appendChild(tr);});
 })();
 $("#layersBtn").onclick=e=>{e.stopPropagation(); $("#layersPop").hidden=!$("#layersPop").hidden;};
-document.addEventListener("click",e=>{ if(!e.target.closest(".dd")){ $("#layersPop").hidden=true; $("#emaPop").hidden=true; } });
+document.addEventListener("click",e=>{ if(!e.target.closest(".dd")){ $("#layersPop").hidden=true; $("#emaPop").hidden=true; $("#daysPop").hidden=true; } });
 $("#helpBtn").onclick=()=>{ $("footer").hidden=!$("footer").hidden; };
 function toggleFull(){ if(document.fullscreenElement) document.exitFullscreen().catch(()=>{}); else if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{}); setTimeout(drawAll,400); }
 function setFocus(on){ document.body.classList.toggle("focus",on); setTimeout(drawAll,300); }
@@ -544,7 +580,8 @@ function rpUpdateNow(){const b=m1[R.idx-1]; $("#rpNow").textContent=b?fmt(shift(
 function rpSet(){ const v=$("#rpStart").value; if(!v) return;
   const tD=Date.UTC(+v.slice(0,4),+v.slice(5,7)-1,+v.slice(8,10),+v.slice(11,13),+v.slice(14,16))/1000; const t=unshift(tD);
   let i=m1.findIndex(b=>b.time>=t); if(i<0) i=m1.length; R.idx=Math.max(1,i); rpPause(); panes.forEach(P=>P.setTF(P.tf,false)); rpUpdateNow(); }
-function rpAdvanceTo(n){ for(;R.idx<n&&R.idx<m1.length;R.idx++){ const r=m1[R.idx]; panes.forEach(P=>P.applyMinute(r)); } panes.forEach(P=>P.follow()); rpUpdateNow(); }
+function rpSeek(n){ R.idx=Math.max(1,Math.min(m1.length,n)); panes.forEach(P=>{ P.bars=applyDayFilter(resample(P.tf,m1.slice(0,R.idx)),P.tf); P.series.setData(P.bars.map(b=>disp(b,P.tf))); if(P.last()) P.legend(disp(P.last(),P.tf)); P.indicators(); requestAnimationFrame(P.draw); }); rpUpdateNow(); }
+function rpAdvanceTo(n){ for(;R.idx<n&&R.idx<m1.length;R.idx++){ const r=m1[R.idx]; panes.forEach(P=>P.applyMinute(r)); } panes.forEach(P=>{P.follow(); requestAnimationFrame(P.draw);}); rpUpdateNow(); }
 function rpStep(){ if(R.idx>=m1.length){rpPause();return;} const f=bucketFn(panes[active].tf); const b0=f(m1[R.idx].time); let n=R.idx; while(n<m1.length&&f(m1[n].time)===b0) n++; rpAdvanceTo(n); }
 function rpBack(){ if(R.idx<=1) return; const f=bucketFn(panes[active].tf); const b=f(m1[R.idx-1].time); let i=R.idx-1; while(i>0&&f(m1[i-1].time)===b) i--; R.idx=Math.max(1,i); rpPause(); panes.forEach(P=>P.setTF(P.tf,true)); rpUpdateNow(); }
 function rpPlay(){ if(R.timer){rpPause();return;} const sp=+$("#rpSpeed").value; $("#rpPlay").textContent="❚❚"; $("#rpPlay").classList.add("playing"); R.timer=setInterval(rpStep,1000/sp); }
@@ -632,7 +669,7 @@ async function connect(){ const key=$("#fhKey").value.trim(); if(!key){setStatus
 function disconnect(){ LV.on=false; if(LV.ws){LV.ws.close();LV.ws=null;} setStatus("not connected",""); }
 $("#liveBtn").onclick=()=>{ $("#lv").hidden=!$("#lv").hidden; try{const k=localStorage.getItem("fhKey"); if(k&&!$("#fhKey").value)$("#fhKey").value=k; const k2=localStorage.getItem("tdKey"); if(k2&&!$("#tdKey").value)$("#tdKey").value=k2;}catch(e){} };
 $("#fhConnect").onclick=connect; $("#fhDisconnect").onclick=disconnect; $("#fhKey").addEventListener("keydown",e=>{if(e.key==="Enter")connect();});
-window.goldChart={pushMinute,panes,resample:tf=>resample(tf),shift,unshift};
+window.goldChart={pushMinute,panes,resample:tf=>resample(tf),shift,unshift,R,m1:()=>m1};
 
 /* ---------- boot ---------- */
 try{
