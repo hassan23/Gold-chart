@@ -406,7 +406,7 @@ function drawOverlays(P){
         ctx.globalAlpha=.07; ctx.fillStyle=col; ctx.fillRect(x1,0,x2-x1,h); ctx.globalAlpha=.5; ctx.strokeStyle=col; ctx.beginPath(); ctx.moveTo(x1+.5,0); ctx.lineTo(x1+.5,h); ctx.stroke(); ctx.globalAlpha=1;
         ctx.fillStyle=col; ctx.font="11px "+css("--mono"); ctx.fillText(name,x1+4,h-8);
         const hl=sessHL(d,h1,h2); if(!hl||!detail) continue;
-        const xe=P.xOf(d+(name==="New York"?16:12)*3600); const yH=series.priceToCoordinate(hl.H), yL=series.priceToCoordinate(hl.L);
+        const xe=P.xOf(d+(name==="Asia"?36:name==="New York"?16:12)*3600); const yH=series.priceToCoordinate(hl.H), yL=series.priceToCoordinate(hl.L);
         ctx.setLineDash([4,4]); ctx.strokeStyle=col; ctx.globalAlpha=.8;
         if(yH!=null){ctx.beginPath();ctx.moveTo(x1,yH);ctx.lineTo(xe,yH);ctx.stroke(); ctx.fillText(name+" high",Math.max(x1,0)+4,yH-3);}
         if(yL!=null){ctx.beginPath();ctx.moveTo(x1,yL);ctx.lineTo(xe,yL);ctx.stroke(); ctx.fillText(name+" low",Math.max(x1,0)+4,yL+12);}
