@@ -622,11 +622,11 @@ async function idbLoad(){ try{ const db=await idb(); return await new Promise((r
 async function idbFlush(){ if(!DB.dirty.size) return; const rows=[...DB.dirty.values()]; DB.dirty.clear(); try{ const db=await idb(); const tx=db.transaction("m1","readwrite"); const st=tx.objectStore("m1"); rows.forEach(r=>st.put({time:r.time,open:r.open,high:r.high,low:r.low,close:r.close})); }catch(e){} }
 setInterval(idbFlush,4000); window.addEventListener("beforeunload",idbFlush);
 function remember(bar){ DB.dirty.set(bar.time,bar); }
-function insertBars(bars){ // merge historical bars (any order) into m1, keep sorted & unique
-  if(!bars.length) return 0; const have=new Map(m1.map(b=>[b.time,b])); let added=0;
-  for(const b of bars){ if(!have.has(b.time)){ have.set(b.time,b); added++; } }
-  if(added){ m1=[...have.values()].sort((a,b)=>a.time-b.time); cache={}; }
-  return added; }
+function insertBars(bars,overwrite){ // merge bars into m1 (sorted, unique). overwrite=true replaces live-built candles with these.
+  if(!bars.length) return 0; const have=new Map(m1.map(b=>[b.time,b])); let added=0, replaced=0;
+  for(const b of bars){ const ex=have.get(b.time); if(!ex){ have.set(b.time,b); added++; } else if(overwrite&&ex.src==="live"){ have.set(b.time,b); replaced++; } }
+  if(added||replaced){ m1=[...have.values()].sort((a,b)=>a.time-b.time); cache={}; }
+  return added+replaced; }
 async function restoreSaved(){ const rows=await idbLoad(); const n=insertBars(rows); if(n) $("#range").textContent+=`, +${n.toLocaleString()} saved live bars`; return n; }
 // export merged 1-minute data
 $("#saveData").onclick=()=>{ let s="time_ny,open,high,low,close,volume\n"; for(const b of m1) s+=fmt(b.time)+","+b.open+","+b.high+","+b.low+","+b.close+","+(b.volume||0)+"\n";
@@ -655,13 +655,31 @@ async function fillGap(){
   setStatus(total?`gap filled: ${total.toLocaleString()} candles added and saved`:"nothing new returned (check the key's plan covers XAU/USD 1-minute history)",total?"on":"err");
 }
 $("#tdFill").onclick=fillGap;
+// Catch-up: pull the last stretch from Twelve Data so recent history is one consistent source.
+let catchupBusy=false, lastCatchup=0;
+async function tdCatchup(reason){
+  const key=$("#tdKey").value.trim(); if(!key||catchupBusy) return; if(Date.now()-lastCatchup<60000&&reason!=="connect") return;
+  catchupBusy=true; lastCatchup=Date.now();
+  try{ const nowNY=utcToNy(Math.floor(Date.now()/1000)); const curMin=Math.floor(nowNY/60)*60;
+    let from=m1.length?m1[m1.length-1].time:curMin-3600; for(let i=m1.length-1;i>=0&&m1[i].src==="live";i--) from=m1[i].time;   // back to the first live-built candle
+    from=Math.min(from,curMin-15*60); const to=curMin-60;                                              // at least the last 15 min; never the forming minute
+    if(to-from<60) return;
+    const r=await fetchT(`https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1min&start_date=${encodeURIComponent(fmt(from)+":00")}&end_date=${encodeURIComponent(fmt(to)+":00")}&timezone=America/New_York&outputsize=5000&format=JSON&apikey=${encodeURIComponent(key)}`,20000);
+    const j=await r.json(); if(j.status==="error") return;
+    const bars=(j.values||[]).map(v=>({time:Date.UTC(+v.datetime.slice(0,4),+v.datetime.slice(5,7)-1,+v.datetime.slice(8,10),+v.datetime.slice(11,13),+v.datetime.slice(14,16))/1000,open:+v.open,high:+v.high,low:+v.low,close:+v.close,src:"td"}))
+      .filter(b=>{const d=new Date(b.time*1000).getUTCDay(),h=new Date(b.time*1000).getUTCHours(); return !(d===6||(d===5&&h>=17)||(d===0&&h<18));});
+    const n=insertBars(bars,true); bars.forEach(remember);
+    if(n&&!R.on) panes.forEach(P=>P.setTF(P.tf,true)); if(n) console.log("catch-up",reason,n,"candles");
+  }catch(e){ console.log("catch-up failed",e.message); } finally{ catchupBusy=false; } }
+setInterval(()=>{ if(LV.on) tdCatchup("timer"); },5*60*1000);
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden&&LV.on) tdCatchup("visible"); });
 $("#clearSaved").onclick=async()=>{ if(!confirm("Delete the live candles saved in this browser? The CSV in the repository is not affected.")) return; try{ const db=await idb(); await new Promise((res,rej)=>{const q=db.transaction("m1","readwrite").objectStore("m1").clear(); q.onsuccess=res; q.onerror=rej;}); DB.dirty.clear(); setStatus("saved live candles cleared; reload the page",""); }catch(e){ setStatus("could not clear: "+e.message,"err"); } };
 
 /* ---------- live (Finnhub) ---------- */
 const LV={ws:null,on:false,retry:0};
 const nyNow=ms=>utcToNy(Math.floor(ms/1000));
 function setStatus(msg,cls){$("#fhStatus").textContent=msg; $("#dot").className="dot "+(cls||"");}
-function pushMinute(bar){ const last=m1[m1.length-1]; if(last&&bar.time<last.time) return;
+function pushMinute(bar){ bar.src="live"; const last=m1[m1.length-1]; if(last&&bar.time<last.time) return;
   if(last&&bar.time===last.time){last.high=Math.max(last.high,bar.high);last.low=Math.min(last.low,bar.low);last.close=bar.close;} else m1.push(bar);
   remember(m1[m1.length-1]); cache={}; if(R.on) return; const src=m1[m1.length-1]; panes.forEach(P=>P.applyMinute(src)); }
 const fetchT=(url,ms=15000)=>{const c=new AbortController(); const id=setTimeout(()=>c.abort(),ms); return fetch(url,{signal:c.signal}).finally(()=>clearTimeout(id));};
@@ -674,19 +692,23 @@ async function backfill(key){
     for(let i=0;i<j.t.length;i++) pushMinute({time:Math.floor(utcToNy(j.t[i])/60)*60,open:j.o[i],high:j.h[i],low:j.l[i],close:j.c[i]});
     got+=j.t.length; from=chunkTo; setStatus("backfilling… "+got+" bars"); }
   return got?"backfilled "+got.toLocaleString()+" bars":"no new history returned"; }
-function openWS(key){ const ws=new WebSocket("wss://ws.finnhub.io?token="+encodeURIComponent(key)); LV.ws=ws;
-  ws.onopen=()=>{LV.retry=0; ws.send(JSON.stringify({type:"subscribe",symbol:"OANDA:XAU_USD"})); setStatus("live: waiting for first tick","on");};
-  ws.onmessage=ev=>{const m=JSON.parse(ev.data); if(m.type!=="trade") return;
+function openWS(key){ if(LV.ws){ try{LV.ws.onclose=null; LV.ws.close();}catch(e){} } const ws=new WebSocket("wss://ws.finnhub.io?token="+encodeURIComponent(key)); LV.ws=ws; LV.lastMsg=Date.now();
+  ws.onopen=()=>{ const wasRetry=LV.retry>0; LV.retry=0; ws.send(JSON.stringify({type:"subscribe",symbol:"OANDA:XAU_USD"})); setStatus(wasRetry?"reconnected, catching up…":"live: waiting for first tick","on"); if(wasRetry) tdCatchup("reconnect"); };
+  ws.onmessage=ev=>{LV.lastMsg=Date.now(); const m=JSON.parse(ev.data); if(m.type==="ping"){ try{ws.send(JSON.stringify({type:"pong"}));}catch(e){} return; } if(m.type!=="trade") return;
     for(const d of m.data){ if(d.s!=="OANDA:XAU_USD") continue; const t=Math.floor(nyNow(d.t)/60)*60; pushMinute({time:t,open:d.p,high:d.p,low:d.p,close:d.p}); }
     const p=m.data[m.data.length-1].p; setStatus("live  "+p.toFixed(2),"on");};
   ws.onerror=()=>setStatus("connection error (check key / network)","err");
-  ws.onclose=()=>{ if(!LV.on) return; LV.retry++; setStatus("reconnecting…","err"); setTimeout(()=>openWS(key),Math.min(30000,2000*LV.retry)); }; }
+  ws.onclose=()=>{ if(!LV.on||LV.ws!==ws) return; LV.retry++; setStatus("connection lost, reconnecting…","err"); setTimeout(()=>{ if(LV.on&&LV.ws===ws) openWS(key); },Math.min(30000,2000*LV.retry)); }; }
+// heartbeat: if the socket is silent for 2 minutes while the market is open, force a reconnect
+setInterval(()=>{ if(!LV.on||!LV.ws) return; const nyNowS=utcToNy(Math.floor(Date.now()/1000)); const d=new Date(nyNowS*1000).getUTCDay(), h=new Date(nyNowS*1000).getUTCHours();
+  const open=!(d===6||(d===5&&h>=17)||(d===0&&h<18)||h===17); if(open&&Date.now()-LV.lastMsg>120000){ setStatus("no ticks for 2 min, reconnecting…","err"); LV.retry++; openWS($("#fhKey").value.trim()); } },30000);
+window.addEventListener("online",()=>{ if(LV.on){ LV.retry++; openWS($("#fhKey").value.trim()); } });
 async function connect(){ const key=$("#fhKey").value.trim(); if(!key){setStatus("enter an API key","err");return;} try{localStorage.setItem("fhKey",key);}catch(e){}
   if(/claude\.ai|anthropic/.test(location.host)){setStatus("live mode does not work from a claude.ai link","err");return;}
   LV.on=true; setStatus("checking key…");
   try{ const rq=await fetchT(`https://finnhub.io/api/v1/quote?symbol=AAPL&token=${encodeURIComponent(key)}`); if(rq.status===401||rq.status===403){setStatus("key rejected ("+rq.status+")","err");LV.on=false;return;} }
   catch(e){ setStatus("could not reach finnhub.io ("+(e.name==="AbortError"?"timed out":e.message)+"). Check internet, VPN or ad-blocker.","err"); LV.on=false; return; }
-  let note; if($("#tdKey").value.trim()){ await fillGap(); note="gap filled via Twelve Data"; } else { try{ note=await backfill(key); }catch(e){ note="backfill skipped ("+(e.name==="AbortError"?"timed out":e.message)+")"; } }
+  let note; if($("#tdKey").value.trim()){ await fillGap(); await tdCatchup("connect"); note="history synced via Twelve Data"; } else { try{ note=await backfill(key); }catch(e){ note="backfill skipped ("+(e.name==="AbortError"?"timed out":e.message)+")"; } }
   if(!R.on) panes.forEach(P=>P.setTF(P.tf,true));
   openWS(key); setTimeout(()=>{ if($("#fhStatus").textContent.startsWith("live: waiting")) setStatus("live: connected, "+note+". Ticks arrive when the market trades.","on"); },1500); }
 function disconnect(){ LV.on=false; if(LV.ws){LV.ws.close();LV.ws=null;} setStatus("not connected",""); }
