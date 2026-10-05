@@ -2,7 +2,7 @@ name: Update gold data
 
 on:
   schedule:
-    - cron: "7,22,37,52 * * * *"   # every 15 minutes (at :07, :22, :37, :52 UTC)
+    - cron: "3,18,33,48 * * * 0-5"  # every 15 minutes, Sunday to Friday (gold is closed Saturday)
   workflow_dispatch:         # lets you run it by hand from the Actions tab
 
 permissions:
