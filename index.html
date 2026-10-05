@@ -624,7 +624,7 @@ setInterval(idbFlush,4000); window.addEventListener("beforeunload",idbFlush);
 function remember(bar){ DB.dirty.set(bar.time,bar); }
 function insertBars(bars,overwrite){ // merge bars into m1 (sorted, unique). overwrite=true replaces live-built candles with these.
   if(!bars.length) return 0; const have=new Map(m1.map(b=>[b.time,b])); let added=0, replaced=0;
-  for(const b of bars){ const ex=have.get(b.time); if(!ex){ have.set(b.time,b); added++; } else if(overwrite&&ex.src==="live"){ have.set(b.time,b); replaced++; } }
+  for(const b of bars){ const ex=have.get(b.time); if(!ex){ have.set(b.time,b); added++; } }
   if(added||replaced){ m1=[...have.values()].sort((a,b)=>a.time-b.time); cache={}; }
   return added+replaced; }
 async function restoreSaved(){ const rows=await idbLoad(); const n=insertBars(rows); if(n) $("#range").textContent+=`, +${n.toLocaleString()} saved live bars`; return n; }
@@ -648,7 +648,7 @@ async function fillGap(){
       let j; try{ const r=await fetchT(`https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1min&start_date=${encodeURIComponent(fmt(from)+":00")}&end_date=${encodeURIComponent(fmt(to)+":00")}&timezone=America/New_York&outputsize=5000&format=JSON&apikey=${encodeURIComponent(key)}`,20000); j=await r.json(); }catch(e){ setStatus("Twelve Data request failed: "+e.message,"err"); return; }
       calls++;
       if(j.status==="error"){ if(/no data|not available/i.test(j.message)){ from=to+60; continue; } setStatus("Twelve Data: "+j.message,"err"); return; }
-      const bars=(j.values||[]).map(v=>({time:Date.UTC(+v.datetime.slice(0,4),+v.datetime.slice(5,7)-1,+v.datetime.slice(8,10),+v.datetime.slice(11,13),+v.datetime.slice(14,16))/1000,open:+v.open,high:+v.high,low:+v.low,close:+v.close}));
+      const bars=(j.values||[]).map(v=>({time:Date.UTC(+v.datetime.slice(0,4),+v.datetime.slice(5,7)-1,+v.datetime.slice(8,10),+v.datetime.slice(11,13),+v.datetime.slice(14,16))/1000-60,open:+v.open,high:+v.high,low:+v.low,close:+v.close,src:"td"}));
       const n=insertBars(bars); bars.forEach(remember); total+=n; from=to+60; }
   }
   await idbFlush(); if(!R.on) panes.forEach(P=>P.setTF(P.tf,true));
@@ -661,14 +661,15 @@ async function tdCatchup(reason){
   const key=$("#tdKey").value.trim(); if(!key||catchupBusy) return; if(Date.now()-lastCatchup<60000&&reason!=="connect") return;
   catchupBusy=true; lastCatchup=Date.now();
   try{ const nowNY=utcToNy(Math.floor(Date.now()/1000)); const curMin=Math.floor(nowNY/60)*60;
-    let from=m1.length?m1[m1.length-1].time:curMin-3600; for(let i=m1.length-1;i>=0&&m1[i].src==="live";i--) from=m1[i].time;   // back to the first live-built candle
-    from=Math.min(from,curMin-15*60); const to=curMin-60;                                              // at least the last 15 min; never the forming minute
-    if(to-from<60) return;
+    const from=curMin-120*60, to=curMin-120;      // look back two hours; never touch the forming minute
+    // only call if something is actually missing
+    const have=new Set(m1.filter(b=>b.time>=from&&b.time<=to).map(b=>b.time)); let missing=0; for(let x=from;x<=to;x+=60){ const d=new Date(x*1000).getUTCDay(),h=new Date(x*1000).getUTCHours(); if(d===6||(d===5&&h>=17)||(d===0&&h<18)||h===17) continue; if(!have.has(x)) missing++; }
+    if(!missing) return;
     const r=await fetchT(`https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1min&start_date=${encodeURIComponent(fmt(from)+":00")}&end_date=${encodeURIComponent(fmt(to)+":00")}&timezone=America/New_York&outputsize=5000&format=JSON&apikey=${encodeURIComponent(key)}`,20000);
     const j=await r.json(); if(j.status==="error") return;
-    const bars=(j.values||[]).map(v=>({time:Date.UTC(+v.datetime.slice(0,4),+v.datetime.slice(5,7)-1,+v.datetime.slice(8,10),+v.datetime.slice(11,13),+v.datetime.slice(14,16))/1000,open:+v.open,high:+v.high,low:+v.low,close:+v.close,src:"td"}))
+    const bars=(j.values||[]).map(v=>({time:Date.UTC(+v.datetime.slice(0,4),+v.datetime.slice(5,7)-1,+v.datetime.slice(8,10),+v.datetime.slice(11,13),+v.datetime.slice(14,16))/1000-60,open:+v.open,high:+v.high,low:+v.low,close:+v.close,src:"td"}))
       .filter(b=>{const d=new Date(b.time*1000).getUTCDay(),h=new Date(b.time*1000).getUTCHours(); return !(d===6||(d===5&&h>=17)||(d===0&&h<18));});
-    const n=insertBars(bars,true); bars.forEach(remember);
+    const n=insertBars(bars); bars.forEach(remember);
     if(n&&!R.on) panes.forEach(P=>P.setTF(P.tf,true)); if(n) console.log("catch-up",reason,n,"candles");
   }catch(e){ console.log("catch-up failed",e.message); } finally{ catchupBusy=false; } }
 setInterval(()=>{ if(LV.on) tdCatchup("timer"); },5*60*1000);
