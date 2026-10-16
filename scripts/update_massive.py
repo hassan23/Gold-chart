@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""Extend data/XAUUSD_1m.csv with new 1-minute XAU/USD candles from Massive (massive.com, formerly Polygon.io).
+Needs the environment variable MASSIVE_KEY (free Currencies Basic key).
+- Fetches every minute after the last one in the CSV, up to now (one request covers up to ~34 days).
+- Timestamps are converted to New York wall-clock to match the CSV. Weekend prints are dropped.
+- Free plan: 5 requests/minute; this uses 1-2 per run.
+"""
+import csv, json, os, sys, time, urllib.request
+from datetime import datetime, timedelta, timezone, date
+from zoneinfo import ZoneInfo
+from pathlib import Path
+
+CSV = Path(__file__).resolve().parent.parent / "data" / "XAUUSD_1m.csv"
+NY = ZoneInfo("America/New_York"); KEY = os.environ.get("MASSIVE_KEY", "").strip()
+
+def load_csv():
+    rows = {}
+    with CSV.open() as f:
+        r = csv.reader(f); next(r, None)
+        for row in r:
+            if len(row) >= 5: rows[row[0]] = row
+    return rows
+
+def closed(t_ny):   # Fri 17:00 -> Sun 18:00 NY
+    wd, h = t_ny.weekday(), t_ny.hour
+    return wd == 5 or (wd == 4 and h >= 17) or (wd == 6 and h < 18)
+
+def main():
+    if not KEY: print("MASSIVE_KEY is not set", flush=True); sys.exit(1)
+    rows = load_csv(); last = datetime.strptime(max(rows), "%Y-%m-%d %H:%M").replace(tzinfo=NY)
+    start = (last.astimezone(timezone.utc) - timedelta(hours=1)).date(); end = datetime.now(timezone.utc).date() + timedelta(days=1)
+    print(f"CSV ends {last:%Y-%m-%d %H:%M} NY; fetching {start} -> {end}", flush=True)
+    added = 0; cur = start; calls = 0
+    while cur <= end:
+        to = min(end, cur + timedelta(days=20))
+        url = f"https://api.massive.com/v2/aggs/ticker/C:XAUUSD/range/1/minute/{cur}/{to}?adjusted=true&sort=asc&limit=50000&apiKey={KEY}"
+        try:
+            j = json.loads(urllib.request.urlopen(url, timeout=60).read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code == 429: print("rate limited, waiting 20s", flush=True); time.sleep(20); continue
+            print("HTTP error", e.code, flush=True); sys.exit(2)
+        calls += 1
+        if j.get("status") not in ("OK", "DELAYED"): print("Massive error:", j.get("error") or j.get("status"), flush=True); sys.exit(2)
+        for r in j.get("results", []):
+            t = datetime.fromtimestamp(r["t"] / 1000, tz=timezone.utc).astimezone(NY)
+            if closed(t): continue
+            k = t.strftime("%Y-%m-%d %H:%M")
+            if k not in rows: added += 1
+            rows[k] = [k, f"{r['o']:.3f}", f"{r['h']:.3f}", f"{r['l']:.3f}", f"{r['c']:.3f}", str(r.get("n", 0))]
+        print(f"  {cur} -> {to}: {len(j.get('results', []))} bars", flush=True)
+        cur = to + timedelta(days=1); time.sleep(13)
+    with CSV.open("w", newline="") as f:
+        w = csv.writer(f); w.writerow(["time_ny", "open", "high", "low", "close", "volume"])
+        for k in sorted(rows): w.writerow(rows[k])
+    print(f"done: {added} new candles in {calls} requests; CSV now ends {max(rows)} NY", flush=True)
+
+if __name__ == "__main__":
+    main()
