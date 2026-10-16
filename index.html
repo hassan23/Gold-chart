@@ -314,7 +314,7 @@ function makePane(tf){
     if(lb&&lb.time===k){lb.high=Math.max(lb.high,r.high);lb.low=Math.min(lb.low,r.low);lb.close=r.close;}
     else if(lb&&k<lb.time) return; else { P.bars.push(P.tf==="1m"?r:{time:k,open:r.open,high:r.high,low:r.low,close:r.close}); newBar=true; }
     series.update(disp(P.last(),P.tf)); P.legend(disp(P.last(),P.tf)); P.indicatorsLive(newBar);
-    if(newBar&&P.patterns&&!PAT_SKIP.has(P.tf)){ const n=P.bars.length; if(n>=5){ const fresh=scanPatterns(P.bars.slice(n-5,n-1),0).map(p=>({...p,i0:p.i0+n-5,i1:p.i1+n-5})); for(const p of fresh) if(!P.patterns.some(q=>q.i1===p.i1)) P.patterns.push(p); } } };
+    if(newBar&&P.patterns&&!PAT_SKIP.has(P.tf)){ const n=P.bars.length, w=Math.min(n-1,PAT_LOOKBACK+10); if(w>8){ const off=n-1-w; const fresh=scanPatterns(P.bars.slice(off,n-1),w-1).map(p=>({...p,i0:p.i0+off,i1:p.i1+off})); for(const p of fresh) if(!P.patterns.some(q=>q.i1===p.i1)) P.patterns.push(p); } } };
   P.follow=()=>{ const lr=chart.timeScale().getVisibleLogicalRange(); if(!lr) return; const w=lr.to-lr.from, n=P.bars.length-1; if(n>lr.to-2||n<lr.from) chart.timeScale().setVisibleLogicalRange({from:n-w*0.75,to:n+w*0.25}); };
   P.xOf=time=>{ const bars=P.dataTimes||P.bars; let lo=0,hi=bars.length-1; while(lo<hi){const m=(lo+hi)>>1; if(bars[m].time<time) lo=m+1; else hi=m;}
     let i=lo; if(i>0&&bars[i].time>time) i=i-1+(time-bars[i-1].time)/Math.max(1,bars[i].time-bars[i-1].time); else if(i===bars.length-1&&time>bars[i].time) i+= (time-bars[i].time)/secOf(P.tf);
@@ -403,17 +403,24 @@ Bullish (at a swing low): 2 or 3 candles, then a green candle that closes ABOVE 
 Bearish (at a swing high): 2 or 3 candles, then a red candle that closes BELOW the lowest low of those candles.
 The prior candles must hold the local extreme (lowest low / highest high of the last 6 bars) so the pattern sits at a swing. */
 const PAT_SKIP=new Set(["1m","1D","Midnight","1W"]);
+const PAT_MAX_BODY=20;   // ignore patterns containing a candle whose body (open to close) is $20 or more
+const PAT_LOOKBACK=120;  // how far back to look for the previous swing high/low that must be taken out
 function scanPatterns(bars,start){ const out=[]; const n=bars.length;
+  // swing pivots: a low lower than the 2 bars on each side (and highs likewise), confirmed 2 bars later
+  const isPL=i=>i>=2&&i+2<n&&bars[i].low<bars[i-1].low&&bars[i].low<bars[i-2].low&&bars[i].low<bars[i+1].low&&bars[i].low<bars[i+2].low;
+  const isPH=i=>i>=2&&i+2<n&&bars[i].high>bars[i-1].high&&bars[i].high>bars[i-2].high&&bars[i].high>bars[i+1].high&&bars[i].high>bars[i+2].high;
+  const prevPivot=(end,test)=>{ for(let j=end-3;j>=Math.max(2,end-PAT_LOOKBACK);j--) if(test(j)) return bars[j]; return null; };   // last pivot confirmed before index `end`
   for(let i=Math.max(3,start||0);i<n;i++){ const c=bars[i]; let hit=null;
+    if(Math.abs(c.close-c.open)>=PAT_MAX_BODY) continue;
     for(const k of [3,2]){ // prefer the 4-candle version
       if(i-k-3<0) continue;
-      const g=bars.slice(i-k,i); const hi=Math.max(...g.map(b=>b.high)), lo=Math.min(...g.map(b=>b.low));
-      const before=bars.slice(i-k-3,i-k); const loB=Math.min(...before.map(b=>b.low)), hiB=Math.max(...before.map(b=>b.high));   // the 3 bars before the group
+      const g=bars.slice(i-k,i); if(g.some(b=>Math.abs(b.close-b.open)>=PAT_MAX_BODY)) continue;
+      const hi=Math.max(...g.map(b=>b.high)), lo=Math.min(...g.map(b=>b.low));
       const reds=g.filter(b=>b.close<b.open).length, greens=g.filter(b=>b.close>b.open).length;
-      // bullish: prior candles are a down-move making a new low vs the bars before them; reversal candle is green and closes above all their highs
-      if(c.close>c.open&&c.close>hi&&lo<loB&&reds>=k-1&&c.low<=lo+ (hi-lo)*0.5){ hit={i0:i-k,i1:i,hi:Math.max(hi,c.high),lo:Math.min(lo,c.low),bull:true,n:k+1}; break; }
-      // bearish: prior candles are an up-move making a new high; reversal candle is red and closes below all their lows
-      if(c.close<c.open&&c.close<lo&&hi>hiB&&greens>=k-1&&c.high>=hi-(hi-lo)*0.5){ hit={i0:i-k,i1:i,hi:Math.max(hi,c.high),lo:Math.min(lo,c.low),bull:false,n:k+1}; break; } }
+      // bullish: the down-move must take out the previous swing low, then a green candle closes above all the prior candles' highs
+      if(c.close>c.open&&c.close>hi&&reds>=k-1&&c.low<=lo+(hi-lo)*0.5){ const pl=prevPivot(i-k,isPL); if(pl&&lo<pl.low){ hit={i0:i-k,i1:i,hi:Math.max(hi,c.high),lo:Math.min(lo,c.low),bull:true,n:k+1,swept:pl.low}; break; } }
+      // bearish: the up-move must take out the previous swing high, then a red candle closes below all the prior candles' lows
+      if(c.close<c.open&&c.close<lo&&greens>=k-1&&c.high>=hi-(hi-lo)*0.5){ const ph=prevPivot(i-k,isPH); if(ph&&hi>ph.high){ hit={i0:i-k,i1:i,hi:Math.max(hi,c.high),lo:Math.min(lo,c.low),bull:false,n:k+1,swept:ph.high}; break; } } }
     if(hit) out.push(hit); }
   return out; }
 function drawPatterns(P,pw,h){
@@ -422,6 +429,7 @@ function drawPatterns(P,pw,h){
   for(const p of P.patterns){ if(p.i1<lr.from-1||p.i0>lr.to+1) continue;
     const x1=(p.i0-0.45-lr.from)*bw, x2=(p.i1+0.45-lr.from)*bw; const y1=series.priceToCoordinate(p.hi), y2=series.priceToCoordinate(p.lo); if(y1==null||y2==null) continue;
     const col=p.bull?up:dn; ctx.globalAlpha=.14; ctx.fillStyle=col; ctx.fillRect(x1,y1-3,x2-x1,y2-y1+6); ctx.globalAlpha=.9; ctx.strokeStyle=col; ctx.lineWidth=1.2; ctx.setLineDash([]); ctx.strokeRect(x1+.5,y1-2.5,x2-x1-1,y2-y1+5); ctx.globalAlpha=1;
+    if(p.swept!=null){ const ys=series.priceToCoordinate(p.swept); if(ys!=null){ ctx.strokeStyle=css("--liq")||"#8B7CF0"; ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(x1-bw*2,ys); ctx.lineTo(x2,ys); ctx.stroke(); ctx.setLineDash([]); } }
     if(bw>5){ ctx.fillStyle=col; ctx.font="600 10px "+css("--body"); ctx.fillText(p.n+(p.bull?"▲":"▼"),x1+3,p.bull?y2+14:y1-6); } } }
 
 /* ---------- overlays ---------- */
