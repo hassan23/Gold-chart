@@ -17,8 +17,8 @@ jobs:
           python-version: "3.12"
       - name: Fetch new candles
         env:
-          TWELVEDATA_KEY: ${{ secrets.TWELVEDATA_KEY }}
-        run: python -u scripts/update_twelvedata.py
+          MASSIVE_KEY: ${{ secrets.MASSIVE_KEY }}
+        run: python -u scripts/update_massive.py
       - name: Commit and push if the data changed
         run: |
           git config user.name "gold-data-bot"
