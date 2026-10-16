@@ -404,23 +404,47 @@ Bearish (at a swing high): 2 or 3 candles, then a red candle that closes BELOW t
 The prior candles must hold the local extreme (lowest low / highest high of the last 6 bars) so the pattern sits at a swing. */
 const PAT_SKIP=new Set(["1m","1D","Midnight","1W"]);
 const PAT_MAX_BODY=20;   // ignore patterns containing a candle whose body (open to close) is $20 or more
-const PAT_LOOKBACK=120;  // how far back to look for the previous swing high/low that must be taken out
+const PAT_LOOKBACK=120;  // bars to look back for swing / equal highs-lows
+const EQ_TOL=0.0006;     // "equal" highs/lows: within 0.06% of each other (~$2.50 at $4200)
+// Liquidity pools that can be swept, in ICT terms: previous day high/low, Asia / London / NY-AM session highs and lows,
+// relative equal highs/lows, and plain swing highs/lows. A pattern only counts if the move INTO it took one of these out
+// for the first time (the level had not been traded through before).
+const liqCache={};
+function dayLevels(d){ // d = NY midnight of the trading day; returns pools formed before/within that day with the time they were complete
+  if(liqCache[d]) return liqCache[d]; const dow=new Date(d*1000).getUTCDay(); const out=[];
+  const pd=sessHL(d-(dow===1?3:1)*86400-7*3600,0,24); if(pd){ out.push({p:pd.H,side:"high",name:"PDH",at:d-7*3600}); out.push({p:pd.L,side:"low",name:"PDL",at:d-7*3600}); }
+  const as=sessHL(d-4*3600,0,4); if(as){ out.push({p:as.H,side:"high",name:"Asia H",at:d}); out.push({p:as.L,side:"low",name:"Asia L",at:d}); }
+  const ld=sessHL(d,2,5); if(ld){ out.push({p:ld.H,side:"high",name:"London H",at:d+5*3600}); out.push({p:ld.L,side:"low",name:"London L",at:d+5*3600}); }
+  const ny=sessHL(d,7,10); if(ny){ out.push({p:ny.H,side:"high",name:"NY AM H",at:d+10*3600}); out.push({p:ny.L,side:"low",name:"NY AM L",at:d+10*3600}); }
+  return liqCache[d]=out; }
 function scanPatterns(bars,start){ const out=[]; const n=bars.length;
-  // swing pivots: a low lower than the 2 bars on each side (and highs likewise), confirmed 2 bars later
   const isPL=i=>i>=2&&i+2<n&&bars[i].low<bars[i-1].low&&bars[i].low<bars[i-2].low&&bars[i].low<bars[i+1].low&&bars[i].low<bars[i+2].low;
   const isPH=i=>i>=2&&i+2<n&&bars[i].high>bars[i-1].high&&bars[i].high>bars[i-2].high&&bars[i].high>bars[i+1].high&&bars[i].high>bars[i+2].high;
-  const prevPivot=(end,test)=>{ for(let j=end-3;j>=Math.max(2,end-PAT_LOOKBACK);j--) if(test(j)) return bars[j]; return null; };   // last pivot confirmed before index `end`
+  // untouched(level, fromIdx, toIdx, side): true if no bar in [fromIdx,toIdx) traded through the level
+  const untouched=(p,side,f,to)=>{ for(let j=Math.max(0,f);j<to;j++){ if(side==="low"?bars[j].low<p:bars[j].high>p) return false; } return true; };
+  const idxAt=tm=>{ let lo=0,hi=n; while(lo<hi){const m=(lo+hi)>>1; if(bars[m].time<tm) lo=m+1; else hi=m;} return lo; };
   for(let i=Math.max(3,start||0);i<n;i++){ const c=bars[i]; let hit=null;
     if(Math.abs(c.close-c.open)>=PAT_MAX_BODY) continue;
     for(const k of [3,2]){ // prefer the 4-candle version
       if(i-k-3<0) continue;
       const g=bars.slice(i-k,i); if(g.some(b=>Math.abs(b.close-b.open)>=PAT_MAX_BODY)) continue;
-      const hi=Math.max(...g.map(b=>b.high)), lo=Math.min(...g.map(b=>b.low));
+      const hi=Math.max(...g.map(b=>b.high)), lo=Math.min(...g.map(b=>b.low)); const g0=i-k;
       const reds=g.filter(b=>b.close<b.open).length, greens=g.filter(b=>b.close>b.open).length;
-      // bullish: the down-move must take out the previous swing low, then a green candle closes above all the prior candles' highs
-      if(c.close>c.open&&c.close>hi&&reds>=k-1&&c.low<=lo+(hi-lo)*0.5){ const pl=prevPivot(i-k,isPL); if(pl&&lo<pl.low){ hit={i0:i-k,i1:i,hi:Math.max(hi,c.high),lo:Math.min(lo,c.low),bull:true,n:k+1,swept:pl.low}; break; } }
-      // bearish: the up-move must take out the previous swing high, then a red candle closes below all the prior candles' lows
-      if(c.close<c.open&&c.close<lo&&greens>=k-1&&c.high>=hi-(hi-lo)*0.5){ const ph=prevPivot(i-k,isPH); if(ph&&hi>ph.high){ hit={i0:i-k,i1:i,hi:Math.max(hi,c.high),lo:Math.min(lo,c.low),bull:false,n:k+1,swept:ph.high}; break; } } }
+      const bull=c.close>c.open&&c.close>hi&&reds>=k-1&&c.low<=lo+(hi-lo)*0.5;
+      const bear=c.close<c.open&&c.close<lo&&greens>=k-1&&c.high>=hi-(hi-lo)*0.5;
+      if(!bull&&!bear) continue;
+      const side=bull?"low":"high"; const ext=bull?lo:hi; const cands=[];
+      // 1) session / previous-day pools for this trading day (and the day before, in case the pattern is early in the day)
+      const d=Math.floor(bars[g0].time/86400)*86400;
+      for(const dd of [d,d-86400]) for(const L of dayLevels(dd)){ if(L.side!==side||L.at>bars[g0].time) continue;
+        if((bull&&ext<L.p)||(bear&&ext>L.p)){ if(untouched(L.p,side,idxAt(L.at),g0)) cands.push({name:L.name,p:L.p,rank:L.name.startsWith("PD")?4:3}); } }
+      // 2) swing pivots within lookback; equal highs/lows (two pivots at nearly the same price) rank higher
+      const piv=[]; for(let j=g0-3;j>=Math.max(2,g0-PAT_LOOKBACK);j--){ if(bull?isPL(j):isPH(j)) piv.push(j); }
+      for(const j of piv){ const p=bull?bars[j].low:bars[j].high; if((bull&&ext<p)||(bear&&ext>p)){ if(!untouched(p,side,j+1,g0)) continue;
+        const eq=piv.some(q=>q!==j&&Math.abs((bull?bars[q].low:bars[q].high)-p)/p<EQ_TOL); cands.push({name:eq?(bull?"equal lows":"equal highs"):(bull?"swing low":"swing high"),p,rank:eq?2:1}); } }
+      if(!cands.length) continue;
+      cands.sort((x,y)=>y.rank-x.rank||(bull?x.p-y.p:y.p-x.p)); const best=cands[0];
+      hit={i0:g0,i1:i,hi:Math.max(hi,c.high),lo:Math.min(lo,c.low),bull,n:k+1,swept:best.p,sweptName:best.name,extra:cands.length-1}; break; }
     if(hit) out.push(hit); }
   return out; }
 function drawPatterns(P,pw,h){
@@ -430,7 +454,7 @@ function drawPatterns(P,pw,h){
     const x1=(p.i0-0.45-lr.from)*bw, x2=(p.i1+0.45-lr.from)*bw; const y1=series.priceToCoordinate(p.hi), y2=series.priceToCoordinate(p.lo); if(y1==null||y2==null) continue;
     const col=p.bull?up:dn; ctx.globalAlpha=.14; ctx.fillStyle=col; ctx.fillRect(x1,y1-3,x2-x1,y2-y1+6); ctx.globalAlpha=.9; ctx.strokeStyle=col; ctx.lineWidth=1.2; ctx.setLineDash([]); ctx.strokeRect(x1+.5,y1-2.5,x2-x1-1,y2-y1+5); ctx.globalAlpha=1;
     if(p.swept!=null){ const ys=series.priceToCoordinate(p.swept); if(ys!=null){ ctx.strokeStyle=css("--liq")||"#8B7CF0"; ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(x1-bw*2,ys); ctx.lineTo(x2,ys); ctx.stroke(); ctx.setLineDash([]); } }
-    if(bw>5){ ctx.fillStyle=col; ctx.font="600 10px "+css("--body"); ctx.fillText(p.n+(p.bull?"▲":"▼"),x1+3,p.bull?y2+14:y1-6); } } }
+    if(bw>5){ ctx.fillStyle=col; ctx.font="600 10px "+css("--body"); ctx.fillText(p.n+(p.bull?"▲ ":"▼ ")+(bw>9?(p.sweptName||"")+(p.extra?" +"+p.extra:""):""),x1+3,p.bull?y2+14:y1-6); } } }
 
 /* ---------- overlays ---------- */
 function drawOverlays(P){
@@ -671,7 +695,7 @@ function remember(bar){ if(bar.src==="td"||bar.src==="mx") DB.dirty.set(bar.time
 function insertBars(bars,overwrite){ // merge bars into m1 (sorted, unique). overwrite=true lets a better source replace a worse one (csv/mx > td > live).
   if(!bars.length) return 0; const have=new Map(m1.map(b=>[b.time,b])); let added=0, replaced=0; const rank={csv:3,mx:3,td:1,live:0};
   for(const b of bars){ const ex=have.get(b.time); if(!ex){ have.set(b.time,b); added++; } else if(overwrite&&(rank[b.src]||0)>(rank[ex.src]||0)){ have.set(b.time,b); replaced++; } }
-  if(added||replaced){ m1=[...have.values()].sort((a,b)=>a.time-b.time); cache={}; stitchAll(); }
+  if(added||replaced){ m1=[...have.values()].sort((a,b)=>a.time-b.time); cache={}; stitchAll(); for(const k in liqCache) delete liqCache[k]; for(const k in sessCache) delete sessCache[k]; }
   return added+replaced; }
 async function restoreSaved(){ const rows=(await idbLoad()).filter(r=>r.src==="td"||r.src==="mx"); const n=insertBars(rows,true); if(n) $("#range").textContent+=`, +${n.toLocaleString()} saved bars`; return n; }
 // export merged 1-minute data
