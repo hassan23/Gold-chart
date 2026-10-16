@@ -18,7 +18,7 @@ def load_csv():
     with CSV.open() as f:
         r = csv.reader(f); next(r, None)
         for row in r:
-            if len(row) >= 5: rows[row[0]] = row
+            if len(row) >= 5: rows[row[0]] = row[:5]
     return rows
 
 def closed(t_ny):   # Fri 17:00 -> Sun 18:00 NY
@@ -46,12 +46,12 @@ def main():
             if closed(t): continue
             k = t.strftime("%Y-%m-%d %H:%M")
             if k not in rows: added += 1
-            rows[k] = [k, f"{r['o']:.3f}", f"{r['h']:.3f}", f"{r['l']:.3f}", f"{r['c']:.3f}", str(r.get("n", 0))]
+            rows[k] = [k, f"{r['o']:.2f}", f"{r['h']:.2f}", f"{r['l']:.2f}", f"{r['c']:.2f}"]
         print(f"  {cur} -> {to}: {len(j.get('results', []))} bars", flush=True)
         cur = to + timedelta(days=1); time.sleep(13)
     with CSV.open("w", newline="") as f:
-        w = csv.writer(f); w.writerow(["time_ny", "open", "high", "low", "close", "volume"])
-        for k in sorted(rows): w.writerow(rows[k])
+        w = csv.writer(f); w.writerow(["time_ny", "open", "high", "low", "close"])
+        for k in sorted(rows): w.writerow(rows[k][:5])
     print(f"done: {added} new candles in {calls} requests; CSV now ends {max(rows)} NY", flush=True)
 
 if __name__ == "__main__":
