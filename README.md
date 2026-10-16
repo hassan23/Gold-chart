@@ -1,47 +1,59 @@
-# Gold chart (XAU/USD), self-updating
+# Gold chart (XAU/USD) that keeps itself up to date
 
-A single-page candlestick chart with one year of 1-minute spot gold data, sessions, previous-day levels,
-Camarilla pivots, replay, drawings, your trade log and a live feed. The data file is refreshed every hour
-by a GitHub Action that pulls from Dukascopy's public feed, so the chart never has gaps.
+One page: candlestick chart with a year of 1-minute spot gold, sessions, previous-day levels,
+Camarilla pivots, replay, drawings, your trade log and a live feed. A GitHub Action fetches new
+1-minute candles from Massive (massive.com, formerly Polygon.io) every 15 minutes and commits them.
+Massive's free plan serves data through the previous day, so the CSV is complete up to yesterday; the page
+covers today with Finnhub live ticks (and optionally Twelve Data to fill holes).
 
-## Set it up (about 5 minutes, no commands)
+Files:
 
-1. On GitHub, create a **new private repository** (any name, e.g. `gold-chart`). Don't add a README.
-2. Click **uploading an existing file** and drag the *contents* of this folder in
-   (`index.html`, `README.md`, `.nojekyll`, the `data`, `scripts` and `.github` folders). Commit to `main`.
-   - If the web uploader refuses the `.github` folder, use GitHub Desktop or `git` once; folders starting
-     with a dot sometimes need that.
-3. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
-4. **Settings → Actions → General → Workflow permissions: Read and write permissions.** Save.
-   (This lets the hourly job commit the updated CSV.)
-5. Go to the **Actions** tab, open **Update gold data**, click **Run workflow** once. It fills everything
-   from where the CSV ends up to the current hour.
-6. The **Publish chart** workflow runs on every push. When it finishes, the URL is shown on the Pages
-   settings page: `https://<your-user>.github.io/<repo>/`.
+    index.html                       the chart page
+    data/XAUUSD_1m.csv               1-minute candles, New York time (grows automatically)
+    scripts/update_massive.py        fetches new candles from Massive
+    .github/workflows/update.yml     every 15 minutes: run the script, commit the CSV
+    .github/workflows/manual.yml     "Download latest gold data now" button in the Actions tab
+    .github/workflows/pages.yml      publishes the page with GitHub Pages (optional)
+    workflows-copy/                  visible copies of the workflow files (.github is a hidden folder)
+    .nojekyll                        required so GitHub Pages serves the files as-is
+
+## One-time setup
+
+1. Create the repository and upload these files (see "Hidden folder" below for the workflows).
+2. Massive key (free Currencies Basic plan at massive.com/currencies):
+   Settings -> Secrets and variables -> Actions -> New repository secret
+   Name: MASSIVE_KEY   Value: your key
+3. Settings -> Actions -> General -> Workflow permissions -> "Read and write permissions" -> Save.
+4. Actions tab -> "Download latest gold data now" -> Run workflow. The log ends with
+   "done: N new candles ... CSV now ends <time> NY".
+5. Hosting: Settings -> Pages -> Source "GitHub Actions" (public repo) or Cloudflare Pages (private repo).
+   See HOSTING.md for the step-by-step.
 
 ## How it stays current
 
-- `scripts/update_data.py` downloads completed days as 1-minute candle files and the current day as
-  hourly tick files (built into 1-minute candles). Times in the CSV are New York wall-clock.
-- `.github/workflows/update.yml` runs it at 7 minutes past every hour and commits `data/XAUUSD_1m.csv`
-  if anything changed. Cost: about 1 minute of the free 2,000 Actions minutes per run.
-- In the browser, the page loads the CSV, adds any live candles it saved locally (IndexedDB), then
-  connects to Finnhub for live ticks if you've entered a key. Data from the CSV always wins over
-  candles built from live ticks for the same minute.
+- Massive serves clean 1-minute XAU/USD candles (verified against Dukascopy: 0.99 correlation) through the
+  previous day on the free plan. Each run fetches everything after the last saved minute. 5 requests/minute.
+- Data before September 2025 is thin on Massive (about 3 quotes per minute); the page stitches those candles
+  so opens match previous closes. From September 2025 on the data is full quality.
+- Prints during the weekend close (Fri 17:00 -> Sun 18:00 New York) are dropped.
+- The page loads the CSV, fills any holes up to yesterday from Massive (key entered in the Live panel), fills
+  today from Twelve Data if you gave it that key, then connects to Finnhub for live ticks. Keys never live in
+  this repository.
 
-## Keys
+## Hidden folder
 
-Finnhub (live ticks) and Twelve Data (optional manual gap fill) keys are entered in the page and kept in
-your browser only. Nothing in this repository contains a key.
+`.github` starts with a dot, so Finder/Explorer hide it and drag-and-drop uploads may skip it. If the
+Actions tab is empty after uploading, add the files by hand: Add file -> Create new file, type the path
+`.github/workflows/update.yml`, paste the contents of `workflows-copy/update.yml`, commit. Same for
+`manual.yml`.
 
-## Privacy and data terms
+## Changing the schedule
 
-Dukascopy data is for personal use and Finnhub's terms forbid redistribution: keep the repository private
-and don't share the Pages URL. Note that GitHub Pages sites on free private repositories are public URLs
-(unguessable but not password-protected). If you want a login in front of it, Cloudflare Pages + Cloudflare
-Access is the free option.
+Edit the cron line in `.github/workflows/update.yml`:
+`"7,22,37,52 * * * *"` = every 15 minutes, `"7,37 * * * *"` = every 30 minutes, `"7 * * * *"` = hourly.
+GitHub starts scheduled runs "at or after" the time, often a few minutes late.
 
-## Running locally instead
+## Data terms
 
-`python -m http.server 8000` inside this folder, then open `http://localhost:8000/`. Run
-`python scripts/update_data.py` whenever you want to top up the data (Python 3.9+, no extra packages).   
+Massive's, Twelve Data's and Finnhub's free plans are for personal, non-commercial use and forbid
+redistribution. Keep the repository private if you can and do not share the Pages URL publicly.

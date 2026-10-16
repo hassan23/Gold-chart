@@ -111,6 +111,8 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-radius:3px;padding
   <label><input type="checkbox" class="ly" id="lyPD"> prev day H/L</label>
   <label><input type="checkbox" class="ly" id="lyMid"> midnight NY</label>
   <label><input type="checkbox" class="ly" id="lyClock"> clock findings</label><span class="sep"></span>
+  <span>Data</span>
+  <label style="grid-column:1/-1"><input type="checkbox" id="stitch" checked> stitch thin candles (open = previous close) for Twelve Data candles and for data before Sep 2025</label>
   <span>Camarilla</span>
   <label><input type="checkbox" class="ly" id="lyCamD"> daily</label>
   <label><input type="checkbox" class="ly" id="lyCamW"> weekly</label>
@@ -149,11 +151,12 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-radius:3px;padding
   <button class="b" id="fhDisconnect" type="button">Disconnect</button>
   <span class="sep"></span><span id="fhStatus" class="now">not connected</span>
   <span class="sp"></span>
-  <label>Twelve Data key <input type="password" id="tdKey" placeholder="for filling gaps (free key)" size="22" autocomplete="off"></label>
-  <button class="b" id="tdFill" type="button" title="Fetch missing 1-minute candles from Twelve Data up to now">Fill gap</button>
+  <label>Massive key <input type="password" id="mxKey" placeholder="history up to yesterday (free)" size="22" autocomplete="off"></label>
+  <label>Twelve Data key <input type="password" id="tdKey" placeholder="today's gaps (optional)" size="20" autocomplete="off"></label>
+  <button class="b" id="tdFill" type="button" title="Fetch missing 1-minute candles up to now">Fill gaps</button>
   <button class="b" id="saveData" type="button" title="Download all 1-minute candles (built-in + live + filled) as CSV">Save data</button>
   <button class="b" id="clearSaved" type="button" title="Delete the live candles saved in this browser (the CSV is not affected)">Clear saved</button>
-  <span class="hint">Keys stay in this browser. Live candles are stored here too, so they survive a refresh.</span>
+  <span class="hint">Keys stay in this browser. History: Massive (clean, through yesterday). Today: Finnhub live; Twelve Data fills holes if the stream drops.</span>
 </div>
 <div id="wrap">
   <div id="panes" class="l1"></div>
@@ -181,7 +184,7 @@ window.addEventListener("error",e=>{const d=document.getElementById("err"); if(!
 const TFS=[["1m",60],["2m",120],["3m",180],["5m",300],["15m",900],["1h",3600],["2h",7200],["4h",14400],["1D",86400],["Midnight",-1],["1W",604800]];
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-let m1=[], cache={}, loaded={};
+let m1=[], cache={}, loaded={}, CSV_END=0;
 const secOf=tf=>Math.max(60,TFS.find(x=>x[0]===tf)[1]);
 
 /* ---------- time zones: data is New York wall-clock; display shifts it ---------- */
@@ -221,8 +224,13 @@ function bucketFn(tf){
   if(tf==="2h"||tf==="4h") return t=>Math.floor((t-17*3600)/sec)*sec+17*3600;
   return t=>Math.floor(t/sec)*sec;
 }
+const THIN_END=Date.UTC(2025,8,1)/1000;   // Massive's XAU/USD feed is thin (3 quotes/min) before Sep 2025
+let STITCH=true; try{ STITCH=localStorage.getItem("stitch")!=="0"; }catch(e){}
+function isTD(b){ return b.src==="td"||b.time<THIN_END; }
+function stitchAll(){ let prev=null; for(const b of m1){ if(prev&&isTD(b)&&prev.time===b.time-60){ b.so=prev.close; } else b.so=undefined; prev=b; } }
+function viewBar(b){ if(!STITCH||b.so===undefined) return b; const o=b.so; return {time:b.time,open:o,high:Math.max(b.high,o),low:Math.min(b.low,o),close:b.close,src:b.src}; }
 function resample(tf,src){
-  const arr=src||m1; if(tf==="1m") return arr; if(!src&&cache[tf]) return cache[tf];
+  const arr0=src||m1; const arr=STITCH?arr0.map(viewBar):arr0; if(tf==="1m"){ if(!src) return cache["1m"]||(cache["1m"]=arr); return arr; } if(!src&&cache[tf]) return cache[tf];
   const f=bucketFn(tf), out=[]; let b=null;
   for(const r of arr){const k=f(r.time);
     if(!b||b.time!==k){b={time:k,open:r.open,high:r.high,low:r.low,close:r.close};out.push(b);}
@@ -300,7 +308,7 @@ function makePane(tf){
     if(keep&&vr){const c=secOf(tf)>=86400?(vr.from+vr.to)/2:unshift((vr.from+vr.to)/2); let i=P.bars.findIndex(b=>b.time>=c); if(i<0)i=P.bars.length-1; let to=Math.min(i+N/2,P.bars.length+5); chart.timeScale().setVisibleLogicalRange({from:to-N,to});}
     else chart.timeScale().setVisibleLogicalRange({from:P.bars.length-N,to:P.bars.length+5});
     if(P.last()) P.legend(disp(P.last(),P.tf)); P.indicators(); if(R.on) P.follow(); requestAnimationFrame(P.draw); if(panes[active]===P) syncTFButtons(); };
-  P.applyMinute=r=>{ if(!dayVisible(r.time)) return; const f=bucketFn(P.tf), k=f(r.time), lb=P.last();
+  P.applyMinute=r0=>{ if(!dayVisible(r0.time)) return; const r=viewBar(r0); const f=bucketFn(P.tf), k=f(r.time), lb=P.last();
     let newBar=false;
     if(lb&&lb.time===k){lb.high=Math.max(lb.high,r.high);lb.low=Math.min(lb.low,r.low);lb.close=r.close;}
     else if(lb&&k<lb.time) return; else { P.bars.push(P.tf==="1m"?r:{time:k,open:r.open,high:r.high,low:r.low,close:r.close}); newBar=true; }
@@ -526,6 +534,7 @@ const drawAll=()=>panes.forEach(p=>requestAnimationFrame(p.draw));
 setInterval(drawAll,250);
 $$("#layersPop .ly").forEach(c=>c.onchange=()=>{saveLayers(); drawAll();});
 $("#lyAll").onchange=e=>{$$("#layersPop .ly").forEach(c=>c.checked=e.target.checked); saveLayers(); drawAll();};
+$("#stitch").checked=STITCH; $("#stitch").onchange=e=>{ STITCH=e.target.checked; try{localStorage.setItem("stitch",STITCH?"1":"0");}catch(x){} cache={}; panes.forEach(P=>P.setTF(P.tf,true)); };
 
 /* ---------- controls ---------- */
 TFS.forEach(([tf])=>{const b=document.createElement("button");b.textContent=tf;b.dataset.tf=tf;b.type="button";b.onclick=()=>panes[active].setTF(tf,true);$("#tfs").appendChild(b);});
@@ -591,7 +600,7 @@ function rpSeekDrag(n){ R.idx=Math.max(1,Math.min(m1.length,n)); const cur=m1[R.
       if(bar.time<kcur){ data.push(disp(bar,Q.tf)); last=bar; }
       else if(bar.time===kcur){ // partial bar: minutes from bucket start up to the cursor
         let lo=0,h2=m1.length; while(lo<h2){const m=(lo+h2)>>1; if(m1[m].time<kcur) lo=m+1; else h2=m;}
-        let p=null; for(let j=lo;j<R.idx;j++){ const r=m1[j]; if(!p) p={time:kcur,open:r.open,high:r.high,low:r.low,close:r.close}; else {p.high=Math.max(p.high,r.high);p.low=Math.min(p.low,r.low);p.close=r.close;} }
+        let p=null; for(let j=lo;j<R.idx;j++){ const r=viewBar(m1[j]); if(!p) p={time:kcur,open:r.open,high:r.high,low:r.low,close:r.close}; else {p.high=Math.max(p.high,r.high);p.low=Math.min(p.low,r.low);p.close=r.close;} }
         if(p){ data.push(disp(p,Q.tf)); last=p; } else data.push({time:big?bar.time:shift(bar.time)}); }
       else data.push({time:big?bar.time:shift(bar.time)}); }
     Q.bars=Q.full.filter(x=>x.time<kcur); if(last&&last.time===kcur) Q.bars.push(last);
@@ -619,15 +628,15 @@ $("#rpExit").onclick=()=>{ rpPause(); R.on=false; $("#rp").hidden=true; $("#repl
 const DB={db:null,dirty:new Map()};
 function idb(){ return new Promise((res,rej)=>{ if(DB.db) return res(DB.db); const r=indexedDB.open("goldchart",1); r.onupgradeneeded=()=>{r.result.createObjectStore("m1",{keyPath:"time"});}; r.onsuccess=()=>{DB.db=r.result;res(DB.db);}; r.onerror=()=>rej(r.error); }); }
 async function idbLoad(){ try{ const db=await idb(); return await new Promise((res,rej)=>{ const q=db.transaction("m1").objectStore("m1").getAll(); q.onsuccess=()=>res(q.result||[]); q.onerror=()=>rej(q.error); }); }catch(e){ return []; } }
-async function idbFlush(){ if(!DB.dirty.size) return; const rows=[...DB.dirty.values()]; DB.dirty.clear(); try{ const db=await idb(); const tx=db.transaction("m1","readwrite"); const st=tx.objectStore("m1"); rows.forEach(r=>st.put({time:r.time,open:r.open,high:r.high,low:r.low,close:r.close})); }catch(e){} }
+async function idbFlush(){ if(!DB.dirty.size) return; const rows=[...DB.dirty.values()]; DB.dirty.clear(); try{ const db=await idb(); const tx=db.transaction("m1","readwrite"); const st=tx.objectStore("m1"); rows.forEach(r=>st.put({time:r.time,open:r.open,high:r.high,low:r.low,close:r.close,src:r.src||"live"})); }catch(e){} }
 setInterval(idbFlush,4000); window.addEventListener("beforeunload",idbFlush);
-function remember(bar){ DB.dirty.set(bar.time,bar); }
-function insertBars(bars,overwrite){ // merge bars into m1 (sorted, unique). overwrite=true replaces live-built candles with these.
-  if(!bars.length) return 0; const have=new Map(m1.map(b=>[b.time,b])); let added=0, replaced=0;
-  for(const b of bars){ const ex=have.get(b.time); if(!ex){ have.set(b.time,b); added++; } }
-  if(added||replaced){ m1=[...have.values()].sort((a,b)=>a.time-b.time); cache={}; }
+function remember(bar){ if(bar.src==="td"||bar.src==="mx") DB.dirty.set(bar.time,bar); }
+function insertBars(bars,overwrite){ // merge bars into m1 (sorted, unique). overwrite=true lets a better source replace a worse one (csv/mx > td > live).
+  if(!bars.length) return 0; const have=new Map(m1.map(b=>[b.time,b])); let added=0, replaced=0; const rank={csv:3,mx:3,td:1,live:0};
+  for(const b of bars){ const ex=have.get(b.time); if(!ex){ have.set(b.time,b); added++; } else if(overwrite&&(rank[b.src]||0)>(rank[ex.src]||0)){ have.set(b.time,b); replaced++; } }
+  if(added||replaced){ m1=[...have.values()].sort((a,b)=>a.time-b.time); cache={}; stitchAll(); }
   return added+replaced; }
-async function restoreSaved(){ const rows=await idbLoad(); const n=insertBars(rows); if(n) $("#range").textContent+=`, +${n.toLocaleString()} saved live bars`; return n; }
+async function restoreSaved(){ const rows=(await idbLoad()).filter(r=>r.src==="td"||r.src==="mx"); const n=insertBars(rows,true); if(n) $("#range").textContent+=`, +${n.toLocaleString()} saved bars`; return n; }
 // export merged 1-minute data
 $("#saveData").onclick=()=>{ let s="time_ny,open,high,low,close,volume\n"; for(const b of m1) s+=fmt(b.time)+","+b.open+","+b.high+","+b.low+","+b.close+","+(b.volume||0)+"\n";
   const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([s],{type:"text/csv"})); a.download="XAUUSD_1m_merged.csv"; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000); };
@@ -654,27 +663,42 @@ async function fillGap(){
   await idbFlush(); if(!R.on) panes.forEach(P=>P.setTF(P.tf,true));
   setStatus(total?`gap filled: ${total.toLocaleString()} candles added and saved`:"nothing new returned (check the key's plan covers XAU/USD 1-minute history)",total?"on":"err");
 }
-$("#tdFill").onclick=fillGap;
-// Catch-up: pull the last stretch from Twelve Data so recent history is one consistent source.
+$("#tdFill").onclick=async()=>{ await mxCatchup("connect"); await tdCatchup("connect"); setStatus("gap fill done",""); };
+// Catch-up 1: Massive (clean; free plan = through yesterday). Fills holes from the CSV end up to today's session start.
+let mxBusy=false, lastMx=0;
+async function mxCatchup(reason){
+  const key=$("#mxKey").value.trim(); if(!key||mxBusy) return; if(Date.now()-lastMx<120000&&reason!=="connect"&&reason!=="boot") return; mxBusy=true; lastMx=Date.now();
+  try{ const nowNY=utcToNy(Math.floor(Date.now()/1000)); const todayStart=Math.floor(nowNY/86400)*86400;
+    const from=Math.max(CSV_END||0, todayStart-14*86400), to=todayStart-60;
+    const have=new Set(m1.filter(b=>b.time>=from&&b.time<=to&&(b.src==="csv"||b.src==="mx")).map(b=>b.time)); let missing=0;
+    for(let x=from;x<=to;x+=60){ const d=new Date(x*1000).getUTCDay(),h=new Date(x*1000).getUTCHours(); if(d===6||(d===5&&h>=17)||(d===0&&h<18)||h===17) continue; if(!have.has(x)) missing++; }
+    if(!missing) return;
+    const fmtD=u=>new Date(u*1000).toISOString().slice(0,10); const a=nyToUtc(from)-86400, b=nyToUtc(to)+86400;
+    const r=await fetchT(`https://api.massive.com/v2/aggs/ticker/C:XAUUSD/range/1/minute/${fmtD(a)}/${fmtD(b)}?adjusted=true&sort=asc&limit=50000&apiKey=${encodeURIComponent(key)}`,30000);
+    const j=await r.json(); if(j.status!=="OK"&&j.status!=="DELAYED"){ console.log("massive:",j.error||j.status); return; }
+    const bars=(j.results||[]).map(v=>({time:Math.floor(utcToNy(v.t/1000)/60)*60,open:v.o,high:v.h,low:v.l,close:v.c,src:"mx"})).filter(b=>{const d=new Date(b.time*1000).getUTCDay(),h=new Date(b.time*1000).getUTCHours(); return !(d===6||(d===5&&h>=17)||(d===0&&h<18));});
+    const n=insertBars(bars,true); bars.forEach(remember); if(n&&!R.on) panes.forEach(P=>P.setTF(P.tf,true)); if(n) console.log("massive catch-up",n,"candles");
+  }catch(e){ console.log("massive catch-up failed",e.message); } finally{ mxBusy=false; } }
+// Catch-up 2: Twelve Data, today only (Massive's free plan has no same-day data). Never touches the forming minute.
 let catchupBusy=false, lastCatchup=0;
 async function tdCatchup(reason){
-  const key=$("#tdKey").value.trim(); if(!key||catchupBusy) return; if(Date.now()-lastCatchup<60000&&reason!=="connect") return;
-  catchupBusy=true; lastCatchup=Date.now();
-  try{ const nowNY=utcToNy(Math.floor(Date.now()/1000)); const curMin=Math.floor(nowNY/60)*60;
-    const from=curMin-120*60, to=curMin-120;      // look back two hours; never touch the forming minute
-    // only call if something is actually missing
-    const have=new Set(m1.filter(b=>b.time>=from&&b.time<=to).map(b=>b.time)); let missing=0; for(let x=from;x<=to;x+=60){ const d=new Date(x*1000).getUTCDay(),h=new Date(x*1000).getUTCHours(); if(d===6||(d===5&&h>=17)||(d===0&&h<18)||h===17) continue; if(!have.has(x)) missing++; }
+  const key=$("#tdKey").value.trim(); if(!key||catchupBusy) return; if(Date.now()-lastCatchup<45000&&reason!=="connect"&&reason!=="boot") return; catchupBusy=true; lastCatchup=Date.now();
+  try{ const nowNY=utcToNy(Math.floor(Date.now()/1000)); const curMin=Math.floor(nowNY/60)*60; const todayStart=Math.floor(nowNY/86400)*86400;
+    const from=Math.max(CSV_END||0,todayStart-6*3600), to=curMin-120;
+    const have=new Set(m1.filter(b=>b.time>=from&&b.time<=to&&b.src!=="live").map(b=>b.time)); let missing=0;
+    for(let x=from;x<=to;x+=60){ const d=new Date(x*1000).getUTCDay(),h=new Date(x*1000).getUTCHours(); if(d===6||(d===5&&h>=17)||(d===0&&h<18)||h===17) continue; if(!have.has(x)) missing++; }
     if(!missing) return;
-    const r=await fetchT(`https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1min&start_date=${encodeURIComponent(fmt(from)+":00")}&end_date=${encodeURIComponent(fmt(to)+":00")}&timezone=America/New_York&outputsize=5000&format=JSON&apikey=${encodeURIComponent(key)}`,20000);
-    const j=await r.json(); if(j.status==="error") return;
-    const bars=(j.values||[]).map(v=>({time:Date.UTC(+v.datetime.slice(0,4),+v.datetime.slice(5,7)-1,+v.datetime.slice(8,10),+v.datetime.slice(11,13),+v.datetime.slice(14,16))/1000-60,open:+v.open,high:+v.high,low:+v.low,close:+v.close,src:"td"}))
-      .filter(b=>{const d=new Date(b.time*1000).getUTCDay(),h=new Date(b.time*1000).getUTCHours(); return !(d===6||(d===5&&h>=17)||(d===0&&h<18));});
-    const n=insertBars(bars); bars.forEach(remember);
-    if(n&&!R.on) panes.forEach(P=>P.setTF(P.tf,true)); if(n) console.log("catch-up",reason,n,"candles");
-  }catch(e){ console.log("catch-up failed",e.message); } finally{ catchupBusy=false; } }
-setInterval(()=>{ if(LV.on) tdCatchup("timer"); },5*60*1000);
-document.addEventListener("visibilitychange",()=>{ if(!document.hidden&&LV.on) tdCatchup("visible"); });
-$("#clearSaved").onclick=async()=>{ if(!confirm("Delete the live candles saved in this browser? The CSV in the repository is not affected.")) return; try{ const db=await idb(); await new Promise((res,rej)=>{const q=db.transaction("m1","readwrite").objectStore("m1").clear(); q.onsuccess=res; q.onerror=rej;}); DB.dirty.clear(); setStatus("saved live candles cleared; reload the page",""); }catch(e){ setStatus("could not clear: "+e.message,"err"); } };
+    let bars=[]; for(let a=from;a<=to;a+=5000*60){ const b2=Math.min(to,a+4999*60);
+      const r=await fetchT(`https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1min&start_date=${encodeURIComponent(fmt(a+60)+":00")}&end_date=${encodeURIComponent(fmt(b2+60)+":00")}&timezone=America/New_York&outputsize=5000&format=JSON&apikey=${encodeURIComponent(key)}`,20000);
+      const j=await r.json(); if(j.status==="error"){ console.log("twelve data:",j.message); break; }
+      bars=bars.concat((j.values||[]).map(v=>({time:Date.UTC(+v.datetime.slice(0,4),+v.datetime.slice(5,7)-1,+v.datetime.slice(8,10),+v.datetime.slice(11,13),+v.datetime.slice(14,16))/1000-60,open:+v.open,high:+v.high,low:+v.low,close:+v.close,src:"td"}))); }
+    bars=bars.filter(b=>{const d=new Date(b.time*1000).getUTCDay(),h=new Date(b.time*1000).getUTCHours(); return !(d===6||(d===5&&h>=17)||(d===0&&h<18));});
+    const n=insertBars(bars,true); bars.forEach(remember); if(n&&!R.on) panes.forEach(P=>P.setTF(P.tf,true));
+    if(n){ console.log("td catch-up",reason,n); if(!LV.ws||LV.ws.readyState!==1) setStatus("today filled to "+fmt(shift(m1[m1.length-1].time))+" via Twelve Data (live feed not connected)",""); }
+  }catch(e){ console.log("td catch-up failed",e.message); } finally{ catchupBusy=false; } }
+setInterval(()=>{ if($("#mxKey").value.trim()) mxCatchup("timer"); if($("#tdKey").value.trim()) tdCatchup("timer"); },2*60*1000);
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden){ mxCatchup("visible"); tdCatchup("visible"); } });
+$("#clearSaved").onclick=async()=>{ if(!confirm("Delete the live candles saved in this browser? The CSV in the repository is not affected.")) return; try{ const db=await idb(); await new Promise((res,rej)=>{const q=db.transaction("m1","readwrite").objectStore("m1").clear(); q.onsuccess=res; q.onerror=rej;}); DB.dirty.clear(); m1=m1.filter(b=>b.src!=="live"); cache={}; panes.forEach(P=>P.setTF(P.tf,true)); setStatus("saved candles cleared",""); }catch(e){ setStatus("could not clear: "+e.message,"err"); } };
 
 /* ---------- live (Finnhub) ---------- */
 const LV={ws:null,on:false,retry:0};
@@ -694,22 +718,25 @@ async function backfill(key){
     got+=j.t.length; from=chunkTo; setStatus("backfilling… "+got+" bars"); }
   return got?"backfilled "+got.toLocaleString()+" bars":"no new history returned"; }
 function openWS(key){ if(LV.ws){ try{LV.ws.onclose=null; LV.ws.close();}catch(e){} } const ws=new WebSocket("wss://ws.finnhub.io?token="+encodeURIComponent(key)); LV.ws=ws; LV.lastMsg=Date.now();
-  ws.onopen=()=>{ const wasRetry=LV.retry>0; LV.retry=0; ws.send(JSON.stringify({type:"subscribe",symbol:"OANDA:XAU_USD"})); setStatus(wasRetry?"reconnected, catching up…":"live: waiting for first tick","on"); if(wasRetry) tdCatchup("reconnect"); };
+  ws.onopen=()=>{ const wasRetry=LV.retry>0; LV.retry=0; LV.everOpen=true; ws.send(JSON.stringify({type:"subscribe",symbol:"OANDA:XAU_USD"})); setStatus(wasRetry?"reconnected, catching up…":"live: waiting for first tick","on"); if(wasRetry) tdCatchup("reconnect"); };
   ws.onmessage=ev=>{LV.lastMsg=Date.now(); const m=JSON.parse(ev.data); if(m.type==="ping"){ try{ws.send(JSON.stringify({type:"pong"}));}catch(e){} return; } if(m.type!=="trade") return;
     for(const d of m.data){ if(d.s!=="OANDA:XAU_USD") continue; const t=Math.floor(nyNow(d.t)/60)*60; pushMinute({time:t,open:d.p,high:d.p,low:d.p,close:d.p}); }
     const p=m.data[m.data.length-1].p; setStatus("live  "+p.toFixed(2),"on");};
-  ws.onerror=()=>setStatus("connection error (check key / network)","err");
-  ws.onclose=()=>{ if(!LV.on||LV.ws!==ws) return; LV.retry++; setStatus("connection lost, reconnecting…","err"); setTimeout(()=>{ if(LV.on&&LV.ws===ws) openWS(key); },Math.min(30000,2000*LV.retry)); }; }
+  ws.onerror=()=>{};
+  ws.onclose=()=>{ if(!LV.on||LV.ws!==ws) return; LV.retry++;
+    if(LV.retry>=3&&!LV.everOpen) setStatus("Finnhub refuses this key (regenerated, or already in use in another tab/device). Update the key in the Live panel.","err");
+    else setStatus("connection lost, reconnecting… ("+LV.retry+")","err");
+    setTimeout(()=>{ if(LV.on&&LV.ws===ws) openWS(key); },LV.everOpen?Math.min(30000,2000*LV.retry):Math.min(120000,15000*LV.retry)); }; }
 // heartbeat: if the socket is silent for 2 minutes while the market is open, force a reconnect
 setInterval(()=>{ if(!LV.on||!LV.ws) return; const nyNowS=utcToNy(Math.floor(Date.now()/1000)); const d=new Date(nyNowS*1000).getUTCDay(), h=new Date(nyNowS*1000).getUTCHours();
-  const open=!(d===6||(d===5&&h>=17)||(d===0&&h<18)||h===17); if(open&&Date.now()-LV.lastMsg>120000){ setStatus("no ticks for 2 min, reconnecting…","err"); LV.retry++; openWS($("#fhKey").value.trim()); } },30000);
+  const open=!(d===6||(d===5&&h>=17)||(d===0&&h<18)||h===17); if(LV.everOpen&&LV.ws.readyState===1&&open&&Date.now()-LV.lastMsg>120000){ setStatus("no ticks for 2 min, reconnecting…","err"); LV.retry++; openWS($("#fhKey").value.trim()); } },30000);
 window.addEventListener("online",()=>{ if(LV.on){ LV.retry++; openWS($("#fhKey").value.trim()); } });
-async function connect(){ const key=$("#fhKey").value.trim(); if(!key){setStatus("enter an API key","err");return;} try{localStorage.setItem("fhKey",key);}catch(e){}
+async function connect(){ const key=$("#fhKey").value.trim(); if(!key){setStatus("enter an API key","err");return;} try{localStorage.setItem("fhKey",key);}catch(e){} LV.retry=0; LV.everOpen=false; try{ if($("#tdKey").value.trim()) localStorage.setItem("tdKey",$("#tdKey").value.trim()); if($("#mxKey").value.trim()) localStorage.setItem("mxKey",$("#mxKey").value.trim()); }catch(e){}
   if(/claude\.ai|anthropic/.test(location.host)){setStatus("live mode does not work from a claude.ai link","err");return;}
   LV.on=true; setStatus("checking key…");
   try{ const rq=await fetchT(`https://finnhub.io/api/v1/quote?symbol=AAPL&token=${encodeURIComponent(key)}`); if(rq.status===401||rq.status===403){setStatus("key rejected ("+rq.status+")","err");LV.on=false;return;} }
   catch(e){ setStatus("could not reach finnhub.io ("+(e.name==="AbortError"?"timed out":e.message)+"). Check internet, VPN or ad-blocker.","err"); LV.on=false; return; }
-  let note; if($("#tdKey").value.trim()){ await fillGap(); await tdCatchup("connect"); note="history synced via Twelve Data"; } else { try{ note=await backfill(key); }catch(e){ note="backfill skipped ("+(e.name==="AbortError"?"timed out":e.message)+")"; } }
+  let note="history synced"; await mxCatchup("connect"); await tdCatchup("connect");
   if(!R.on) panes.forEach(P=>P.setTF(P.tf,true));
   openWS(key); setTimeout(()=>{ if($("#fhStatus").textContent.startsWith("live: waiting")) setStatus("live: connected, "+note+". Ticks arrive when the market trades.","on"); },1500); }
 function disconnect(){ LV.on=false; if(LV.ws){LV.ws.close();LV.ws=null;} setStatus("not connected",""); }
@@ -725,11 +752,13 @@ try{
     catch(e){ tried.push(u+" → "+e.message); }
   }
   if(text===null) throw new Error("Could not load the data file. Tried: "+tried.join("; ")+". The CSV must be at "+DATA_URL+" next to this index.html (same folder level), on the same branch GitHub Pages publishes. Open "+new URL(DATA_URL,location.href).href+" in a new tab to check.");
-  m1=parseCSV(text); $("#load").remove();
+  m1=parseCSV(text); m1.forEach(b=>b.src="csv"); CSV_END=m1.length?m1[m1.length-1].time:0; stitchAll(); $("#load").remove();
   $("#range").textContent=`${m1.length.toLocaleString()} one-minute bars, ${fmt(m1[0].time).slice(0,10)} to ${fmt(m1[m1.length-1].time).slice(0,10)}`; await restoreSaved();
   let n=1; try{n=+localStorage.getItem("layout")||1;}catch(e){} setLayout(n); applyTheme();
   panes.forEach(P=>P.chart.timeScale().scrollToRealTime()); $("#emaBtn").textContent="EMA"+(EMA.cfg.some(c=>c.on)?" ("+EMA.cfg.filter(c=>c.on).map(c=>c.n).join("/")+") ▾":" ▾");
-  try{ const k=localStorage.getItem("fhKey"); if(k){ $("#fhKey").value=k; const k2=localStorage.getItem("tdKey"); if(k2)$("#tdKey").value=k2; connect(); } else { $("#lv").hidden=false; setStatus("paste your Finnhub key once; it will connect automatically from then on",""); } }catch(e){}
+  try{ const k=localStorage.getItem("fhKey"), k2=localStorage.getItem("tdKey"), k3=localStorage.getItem("mxKey"); if(k) $("#fhKey").value=k; if(k2) $("#tdKey").value=k2; if(k3) $("#mxKey").value=k3;
+    if(k3){ setStatus("syncing history from Massive…"); await mxCatchup("boot"); } if(k2){ setStatus("filling today from Twelve Data…"); await tdCatchup("boot"); }
+    if(k) connect(); else { $("#lv").hidden=false; setStatus("paste your Finnhub key (live), Massive key (clean history) and optionally Twelve Data (today's gaps), then Connect",""); } }catch(e){}
 }catch(err){ $("#load").innerHTML=err.message; }
 })();
 </script>
