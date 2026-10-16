@@ -18,6 +18,7 @@ jobs:
       - name: Fetch new candles
         env:
           MASSIVE_KEY: ${{ secrets.MASSIVE_KEY }}
+          TWELVEDATA_KEY: ${{ secrets.TWELVEDATA_KEY }}
         run: python -u scripts/update_massive.py
       - name: Commit and push if the data changed
         run: |
