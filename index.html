@@ -212,7 +212,7 @@ function parseCSV(text){
   for(let i=1;i<lines.length;i++){const L=lines[i]; if(L.length<20) continue;
     const c=L.indexOf(","); const ts=L.slice(0,c); const r=L.slice(c+1).split(",");
     const t=Date.UTC(+ts.slice(0,4),+ts.slice(5,7)-1,+ts.slice(8,10),+ts.slice(11,13)||0,+ts.slice(14,16)||0)/1000;
-    out.push({time:t,open:+r[0],high:+r[1],low:+r[2],close:+r[3]});}
+    const b={time:t,open:+r[0],high:+r[1],low:+r[2],close:+r[3]}; const sc=(r[4]||"").trim(); if(sc==="td"||sc==="mx") b.src=sc; out.push(b);}
   return out;
 }
 async function unpack(){ return ""; }
@@ -669,7 +669,8 @@ let mxBusy=false, lastMx=0;
 async function mxCatchup(reason){
   const key=$("#mxKey").value.trim(); if(!key||mxBusy) return; if(Date.now()-lastMx<120000&&reason!=="connect"&&reason!=="boot") return; mxBusy=true; lastMx=Date.now();
   try{ const nowNY=utcToNy(Math.floor(Date.now()/1000)); const todayStart=Math.floor(nowNY/86400)*86400;
-    const from=Math.max(CSV_END||0, todayStart-14*86400), to=todayStart-60;
+    let lastClean=0; for(let i=m1.length-1;i>=0;i--){ if(m1[i].src==="csv"||m1[i].src==="mx"){ lastClean=m1[i].time; break; } }
+    const from=Math.max(lastClean, todayStart-14*86400), to=todayStart-60;
     const have=new Set(m1.filter(b=>b.time>=from&&b.time<=to&&(b.src==="csv"||b.src==="mx")).map(b=>b.time)); let missing=0;
     for(let x=from;x<=to;x+=60){ const d=new Date(x*1000).getUTCDay(),h=new Date(x*1000).getUTCHours(); if(d===6||(d===5&&h>=17)||(d===0&&h<18)||h===17) continue; if(!have.has(x)) missing++; }
     if(!missing) return;
@@ -752,7 +753,7 @@ try{
     catch(e){ tried.push(u+" → "+e.message); }
   }
   if(text===null) throw new Error("Could not load the data file. Tried: "+tried.join("; ")+". The CSV must be at "+DATA_URL+" next to this index.html (same folder level), on the same branch GitHub Pages publishes. Open "+new URL(DATA_URL,location.href).href+" in a new tab to check.");
-  m1=parseCSV(text); m1.forEach(b=>b.src="csv"); CSV_END=m1.length?m1[m1.length-1].time:0; stitchAll(); $("#load").remove();
+  m1=parseCSV(text); m1.forEach(b=>{ if(!b.src) b.src="csv"; }); CSV_END=m1.length?m1[m1.length-1].time:0; stitchAll(); $("#load").remove();
   $("#range").textContent=`${m1.length.toLocaleString()} one-minute bars, ${fmt(m1[0].time).slice(0,10)} to ${fmt(m1[m1.length-1].time).slice(0,10)}`; await restoreSaved();
   let n=1; try{n=+localStorage.getItem("layout")||1;}catch(e){} setLayout(n); applyTheme();
   panes.forEach(P=>P.chart.timeScale().scrollToRealTime()); $("#emaBtn").textContent="EMA"+(EMA.cfg.some(c=>c.on)?" ("+EMA.cfg.filter(c=>c.on).map(c=>c.n).join("/")+") ▾":" ▾");
