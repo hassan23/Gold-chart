@@ -110,7 +110,8 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-radius:3px;padding
   <label><input type="checkbox" class="ly" id="lyLunch"> NY lunch (no trade)</label>
   <label><input type="checkbox" class="ly" id="lyPD"> prev day H/L</label>
   <label><input type="checkbox" class="ly" id="lyMid"> midnight NY</label>
-  <label><input type="checkbox" class="ly" id="lyClock"> clock findings</label><span class="sep"></span>
+  <label><input type="checkbox" class="ly" id="lyClock"> clock findings</label>
+  <label><input type="checkbox" class="ly" id="lyPat" checked> 3/4-candle reversals</label><span class="sep"></span>
   <span>Data</span>
   <label style="grid-column:1/-1"><input type="checkbox" id="stitch" checked> stitch thin candles (open = previous close) for Twelve Data candles and for data before Sep 2025</label>
   <span>Camarilla</span>
@@ -307,12 +308,13 @@ function makePane(tf){
     const vr=chart.timeScale().getVisibleRange(); series.setData(P.bars.map(b=>disp(b,P.tf))); const N=140;
     if(keep&&vr){const c=secOf(tf)>=86400?(vr.from+vr.to)/2:unshift((vr.from+vr.to)/2); let i=P.bars.findIndex(b=>b.time>=c); if(i<0)i=P.bars.length-1; let to=Math.min(i+N/2,P.bars.length+5); chart.timeScale().setVisibleLogicalRange({from:to-N,to});}
     else chart.timeScale().setVisibleLogicalRange({from:P.bars.length-N,to:P.bars.length+5});
-    if(P.last()) P.legend(disp(P.last(),P.tf)); P.indicators(); if(R.on) P.follow(); requestAnimationFrame(P.draw); if(panes[active]===P) syncTFButtons(); };
+    if(P.last()) P.legend(disp(P.last(),P.tf)); P.indicators(); P.patterns=PAT_SKIP.has(tf)?[]:scanPatterns(P.bars); if(R.on) P.follow(); requestAnimationFrame(P.draw); if(panes[active]===P) syncTFButtons(); };
   P.applyMinute=r0=>{ if(!dayVisible(r0.time)) return; const r=viewBar(r0); const f=bucketFn(P.tf), k=f(r.time), lb=P.last();
     let newBar=false;
     if(lb&&lb.time===k){lb.high=Math.max(lb.high,r.high);lb.low=Math.min(lb.low,r.low);lb.close=r.close;}
     else if(lb&&k<lb.time) return; else { P.bars.push(P.tf==="1m"?r:{time:k,open:r.open,high:r.high,low:r.low,close:r.close}); newBar=true; }
-    series.update(disp(P.last(),P.tf)); P.legend(disp(P.last(),P.tf)); P.indicatorsLive(newBar); };
+    series.update(disp(P.last(),P.tf)); P.legend(disp(P.last(),P.tf)); P.indicatorsLive(newBar);
+    if(newBar&&P.patterns&&!PAT_SKIP.has(P.tf)){ const n=P.bars.length; if(n>=5){ const fresh=scanPatterns(P.bars.slice(n-5,n-1),0).map(p=>({...p,i0:p.i0+n-5,i1:p.i1+n-5})); for(const p of fresh) if(!P.patterns.some(q=>q.i1===p.i1)) P.patterns.push(p); } } };
   P.follow=()=>{ const lr=chart.timeScale().getVisibleLogicalRange(); if(!lr) return; const w=lr.to-lr.from, n=P.bars.length-1; if(n>lr.to-2||n<lr.from) chart.timeScale().setVisibleLogicalRange({from:n-w*0.75,to:n+w*0.25}); };
   P.xOf=time=>{ const bars=P.dataTimes||P.bars; let lo=0,hi=bars.length-1; while(lo<hi){const m=(lo+hi)>>1; if(bars[m].time<time) lo=m+1; else hi=m;}
     let i=lo; if(i>0&&bars[i].time>time) i=i-1+(time-bars[i-1].time)/Math.max(1,bars[i].time-bars[i-1].time); else if(i===bars.length-1&&time>bars[i].time) i+= (time-bars[i].time)/secOf(P.tf);
@@ -396,6 +398,32 @@ $("#emaBtn").onclick=e=>{e.stopPropagation(); $("#emaPop").hidden=!$("#emaPop").
 try{ const s=JSON.parse(localStorage.getItem("layers")||"null"); if(s) for(const id in s){ const el=document.getElementById(id); if(el) el.checked=s[id]; } }catch(e){}
 function saveLayers(){ const s={}; $$("#layersPop .ly").forEach(c=>s[c.id]=c.checked); try{localStorage.setItem("layers",JSON.stringify(s));}catch(e){} $("#lyAll").checked=$$("#layersPop .ly").every(x=>x.checked); }
 
+/* ---------- 3/4-candle reversal patterns ----------
+Bullish (at a swing low): 2 or 3 candles, then a green candle that closes ABOVE the highest high of those candles.
+Bearish (at a swing high): 2 or 3 candles, then a red candle that closes BELOW the lowest low of those candles.
+The prior candles must hold the local extreme (lowest low / highest high of the last 6 bars) so the pattern sits at a swing. */
+const PAT_SKIP=new Set(["1m","1D","Midnight","1W"]);
+function scanPatterns(bars,start){ const out=[]; const n=bars.length;
+  for(let i=Math.max(3,start||0);i<n;i++){ const c=bars[i]; let hit=null;
+    for(const k of [3,2]){ // prefer the 4-candle version
+      if(i-k-3<0) continue;
+      const g=bars.slice(i-k,i); const hi=Math.max(...g.map(b=>b.high)), lo=Math.min(...g.map(b=>b.low));
+      const before=bars.slice(i-k-3,i-k); const loB=Math.min(...before.map(b=>b.low)), hiB=Math.max(...before.map(b=>b.high));   // the 3 bars before the group
+      const reds=g.filter(b=>b.close<b.open).length, greens=g.filter(b=>b.close>b.open).length;
+      // bullish: prior candles are a down-move making a new low vs the bars before them; reversal candle is green and closes above all their highs
+      if(c.close>c.open&&c.close>hi&&lo<loB&&reds>=k-1&&c.low<=lo+ (hi-lo)*0.5){ hit={i0:i-k,i1:i,hi:Math.max(hi,c.high),lo:Math.min(lo,c.low),bull:true,n:k+1}; break; }
+      // bearish: prior candles are an up-move making a new high; reversal candle is red and closes below all their lows
+      if(c.close<c.open&&c.close<lo&&hi>hiB&&greens>=k-1&&c.high>=hi-(hi-lo)*0.5){ hit={i0:i-k,i1:i,hi:Math.max(hi,c.high),lo:Math.min(lo,c.low),bull:false,n:k+1}; break; } }
+    if(hit) out.push(hit); }
+  return out; }
+function drawPatterns(P,pw,h){
+  if(!$("#lyPat").checked||PAT_SKIP.has(P.tf)||!P.patterns) return; const {ctx,series}=P; const up=css("--bull"),dn=css("--dn");
+  const lr=P.chart.timeScale().getVisibleLogicalRange(); if(!lr) return; const bw=pw/(lr.to-lr.from);
+  for(const p of P.patterns){ if(p.i1<lr.from-1||p.i0>lr.to+1) continue;
+    const x1=(p.i0-0.45-lr.from)*bw, x2=(p.i1+0.45-lr.from)*bw; const y1=series.priceToCoordinate(p.hi), y2=series.priceToCoordinate(p.lo); if(y1==null||y2==null) continue;
+    const col=p.bull?up:dn; ctx.globalAlpha=.14; ctx.fillStyle=col; ctx.fillRect(x1,y1-3,x2-x1,y2-y1+6); ctx.globalAlpha=.9; ctx.strokeStyle=col; ctx.lineWidth=1.2; ctx.setLineDash([]); ctx.strokeRect(x1+.5,y1-2.5,x2-x1-1,y2-y1+5); ctx.globalAlpha=1;
+    if(bw>5){ ctx.fillStyle=col; ctx.font="600 10px "+css("--body"); ctx.fillText(p.n+(p.bull?"▲":"▼"),x1+3,p.bull?y2+14:y1-6); } } }
+
 /* ---------- overlays ---------- */
 function drawOverlays(P){
   const {ctx,ov,el,chart,series}=P; const w=el.clientWidth, h=el.clientHeight, dpr=window.devicePixelRatio||1;
@@ -440,6 +468,7 @@ function drawOverlays(P){
     }
   }
   if(vr) drawCamarilla(P,vr,h,pw);
+  drawPatterns(P,pw,h);
   drawUser(P);
   if(R.on&&R.idx>0){ const xr=P.xOf(m1[R.idx-1].time); if(xr!=null&&xr>=0&&xr<=pw){ ctx.save(); ctx.strokeStyle=css("--acc"); ctx.lineWidth=2; ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(xr+.5,0); ctx.lineTo(xr+.5,h); ctx.stroke();
       ctx.fillStyle=css("--acc"); ctx.beginPath(); ctx.moveTo(xr-7,0); ctx.lineTo(xr+7,0); ctx.lineTo(xr,10); ctx.closePath(); ctx.fill(); ctx.fillRect(xr-6,h-14,12,14);
@@ -605,7 +634,7 @@ function rpSeekDrag(n){ R.idx=Math.max(1,Math.min(m1.length,n)); const cur=m1[R.
       else data.push({time:big?bar.time:shift(bar.time)}); }
     Q.bars=Q.full.filter(x=>x.time<kcur); if(last&&last.time===kcur) Q.bars.push(last);
     Q.dataTimes=[]; for(let i=i0;i<Q.full.length&&Q.full[i].time<=b;i++) Q.dataTimes.push({time:Q.full[i].time});
-    Q.series.setData(data); if(last) Q.legend(disp(last,Q.tf));
+    Q.series.setData(data); if(last) Q.legend(disp(last,Q.tf)); Q.patterns=PAT_SKIP.has(Q.tf)?[]:scanPatterns(Q.bars).map(p=>({...p,i0:p.i0-i0,i1:p.i1-i0}));
     Q.chart.timeScale().setVisibleRange({from:big?Q.win.va:shift(Q.win.va),to:big?Q.win.vb:shift(Q.win.vb)}); requestAnimationFrame(Q.draw); });
   rpUpdateNow(); }
 function rpDragEnd(P,x){ // restore normal replay data; keep the cursor line under the mouse
