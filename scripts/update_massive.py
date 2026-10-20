@@ -32,21 +32,27 @@ def main():
     rows = load_csv(); last = datetime.strptime(max(rows), "%Y-%m-%d %H:%M").replace(tzinfo=NY)
     start = (last.astimezone(timezone.utc) - timedelta(hours=1)).date(); end = datetime.now(timezone.utc).date() + timedelta(days=1)
     print(f"CSV ends {last:%Y-%m-%d %H:%M} NY; fetching {start} -> {end}", flush=True)
-    added = 0; cur = start; calls = 0
+    added = 0; cur = start; calls = 0; massive_ok = True
     while cur <= end:
         to = min(end, cur + timedelta(days=20))
         url = f"https://api.massive.com/v2/aggs/ticker/C:XAUUSD/range/1/minute/{cur}/{to}?adjusted=true&sort=asc&limit=50000&apiKey={KEY}"
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "gold-chart-updater/1.0 (github actions)"})
-            j = json.loads(urllib.request.urlopen(req, timeout=60).read().decode())
-        except urllib.error.HTTPError as e:
-            body = ""
-            try: body = e.read().decode()[:300]
-            except Exception: pass
-            if e.code == 429: print("rate limited, waiting 20s", flush=True); time.sleep(20); continue
-            print(f"Massive HTTP {e.code} for {cur} -> {to}: {body}", flush=True)
-            print("key present:", bool(KEY), "| key length:", len(KEY), flush=True)
-            sys.exit(2)
+        j = None
+        for attempt in range(3):
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "gold-chart-updater/1.0 (github actions)"})
+                j = json.loads(urllib.request.urlopen(req, timeout=60).read().decode()); break
+            except urllib.error.HTTPError as e:
+                body = ""
+                try: body = e.read().decode()[:300]
+                except Exception: pass
+                print(f"Massive HTTP {e.code} for {cur} -> {to} (attempt {attempt+1}/3): {body}", flush=True)
+                if e.code == 429: time.sleep(20)
+                else: time.sleep(15)
+            except Exception as e:
+                print(f"Massive request error: {e}", flush=True); time.sleep(10)
+        if j is None:
+            print("Massive unavailable from this runner right now; will use Twelve Data for the gap and retry next run.", flush=True)
+            massive_ok = False; break
         calls += 1
         if j.get("status") not in ("OK", "DELAYED"): print("Massive error:", j.get("error") or j.get("status"), flush=True); sys.exit(2)
         for r in j.get("results", []):
@@ -64,12 +70,17 @@ def main():
         last_mx = max(k for k, v in rows.items() if v[5] == "mx")
         start_td = datetime.strptime(last_mx, "%Y-%m-%d %H:%M").replace(tzinfo=NY) + timedelta(minutes=2)   # +1 next minute, +1 for the shift below
         now_ny = datetime.now(timezone.utc).astimezone(NY).replace(second=0, microsecond=0) - timedelta(minutes=1)
-        if now_ny > start_td:
-            q = urllib.parse.urlencode({"symbol": "XAU/USD", "interval": "1min", "start_date": start_td.strftime("%Y-%m-%d %H:%M:%S"), "end_date": now_ny.strftime("%Y-%m-%d %H:%M:%S"),
+        chunk = start_td; n_calls = 0
+        while chunk < now_ny and n_calls < 8:          # up to 8 x 5000 minutes (~4 weeks) per run, within the free limit of 8/min
+            end_c = min(now_ny, chunk + timedelta(minutes=4999))
+            q = urllib.parse.urlencode({"symbol": "XAU/USD", "interval": "1min", "start_date": chunk.strftime("%Y-%m-%d %H:%M:%S"), "end_date": end_c.strftime("%Y-%m-%d %H:%M:%S"),
                  "timezone": "America/New_York", "outputsize": 5000, "format": "JSON", "apikey": TD})
             try:
-                j = json.loads(urllib.request.urlopen("https://api.twelvedata.com/time_series?" + q, timeout=30).read().decode())
-                if j.get("status") == "error": print("Twelve Data:", j.get("message", "")[:120], flush=True)
+                if n_calls: time.sleep(8)
+                j = json.loads(urllib.request.urlopen("https://api.twelvedata.com/time_series?" + q, timeout=30).read().decode()); n_calls += 1
+                if j.get("status") == "error":
+                    msg = j.get("message", "")
+                    if "No data" not in msg: print("Twelve Data:", msg[:120], flush=True); break
                 for v in j.get("values", []):
                     t = datetime.strptime(v["datetime"][:16], "%Y-%m-%d %H:%M") - timedelta(minutes=1)   # Twelve Data stamps candles one minute late
                     if closed(t.replace(tzinfo=NY)): continue
@@ -77,12 +88,14 @@ def main():
                     if k not in rows or rows[k][5] == "td":
                         if k not in rows: td_added += 1
                         rows[k] = [k, f"{float(v['open']):.2f}", f"{float(v['high']):.2f}", f"{float(v['low']):.2f}", f"{float(v['close']):.2f}", "td"]
-                print(f"  today via Twelve Data: {td_added} new candles (through {now_ny:%H:%M} NY)", flush=True)
-            except Exception as e: print("Twelve Data request failed:", e, flush=True)
+            except Exception as e: print("Twelve Data request failed:", e, flush=True); break
+            chunk = end_c + timedelta(minutes=1)
+        print(f"  via Twelve Data: {td_added} new candles (through {now_ny:%Y-%m-%d %H:%M} NY, {n_calls} requests)", flush=True)
     with CSV.open("w", newline="") as f:
         w = csv.writer(f); w.writerow(["time_ny", "open", "high", "low", "close", "src"])
         for k in sorted(rows): w.writerow(rows[k][:6])
     print(f"done: {added} Massive candles in {calls} requests, {td_added} Twelve Data candles; CSV now ends {max(rows)} NY", flush=True)
+    if not massive_ok and td_added == 0 and added == 0: sys.exit(2)
 
 if __name__ == "__main__":
     main()
