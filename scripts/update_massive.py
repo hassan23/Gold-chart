@@ -37,10 +37,16 @@ def main():
         to = min(end, cur + timedelta(days=20))
         url = f"https://api.massive.com/v2/aggs/ticker/C:XAUUSD/range/1/minute/{cur}/{to}?adjusted=true&sort=asc&limit=50000&apiKey={KEY}"
         try:
-            j = json.loads(urllib.request.urlopen(url, timeout=60).read().decode())
+            req = urllib.request.Request(url, headers={"User-Agent": "gold-chart-updater/1.0 (github actions)"})
+            j = json.loads(urllib.request.urlopen(req, timeout=60).read().decode())
         except urllib.error.HTTPError as e:
+            body = ""
+            try: body = e.read().decode()[:300]
+            except Exception: pass
             if e.code == 429: print("rate limited, waiting 20s", flush=True); time.sleep(20); continue
-            print("HTTP error", e.code, flush=True); sys.exit(2)
+            print(f"Massive HTTP {e.code} for {cur} -> {to}: {body}", flush=True)
+            print("key present:", bool(KEY), "| key length:", len(KEY), flush=True)
+            sys.exit(2)
         calls += 1
         if j.get("status") not in ("OK", "DELAYED"): print("Massive error:", j.get("error") or j.get("status"), flush=True); sys.exit(2)
         for r in j.get("results", []):
