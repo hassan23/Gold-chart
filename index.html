@@ -113,7 +113,11 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-radius:3px;padding
   <label><input type="checkbox" class="ly" id="lyClock"> clock findings</label>
   <label><input type="checkbox" class="ly" id="lyPat" checked> 3/4-candle reversals</label>
   <label><input type="checkbox" class="ly" id="lyFVG" checked> fair value gaps</label>
-  <label><input type="checkbox" class="ly" id="lyOB" checked> order blocks</label><span class="sep"></span>
+  <label><input type="checkbox" class="ly" id="lyOB" checked> order blocks</label>
+  <span>Show gaps / order blocks from</span>
+  <label><input type="checkbox" class="zsrc" value="own" checked> this pane's timeframe</label><label><input type="checkbox" class="zsrc" value="5m"> 5m</label>
+  <label><input type="checkbox" class="zsrc" value="15m"> 15m</label><label><input type="checkbox" class="zsrc" value="1h"> 1h</label>
+  <label><input type="checkbox" class="zsrc" value="4h"> 4h</label><label><input type="checkbox" class="zsrc" value="1D"> 1D</label><span class="sep"></span>
   <span>Data</span>
   <label style="grid-column:1/-1"><input type="checkbox" id="stitch" checked> stitch thin candles (open = previous close) for Twelve Data candles and for data before Sep 2025</label>
   <span>Camarilla</span>
@@ -300,7 +304,7 @@ function makePane(tf){
     crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
     rightPriceScale:{borderColor:css("--line"),scaleMargins:{top:.08,bottom:.08}},
     timeScale:{borderColor:css("--line"),timeVisible:true,secondsVisible:false,rightOffset:6,barSpacing:8},
-    localization:{locale:"en-US"},autoSize:true});
+    localization:{locale:"en-US"},kineticScroll:{mouse:false,touch:false},autoSize:true});
   const series=chart.addCandlestickSeries({upColor:css("--up"),downColor:css("--dn"),borderVisible:false,wickUpColor:css("--up"),wickDownColor:css("--dn"),priceFormat:{type:"price",precision:2,minMove:0.01}});
   const P={el,chart,series,tf,bars:[],ov:el.querySelector(".ov"),ctx:el.querySelector(".ov").getContext("2d"),lg:el.querySelector(".lg")};
   P.legend=d=>{ if(!d) return; const ch=d.close-d.open, cls=ch>=0?"u":"d";
@@ -487,16 +491,26 @@ function scanZones(bars,fromIdx){ const fv=[], ob=[]; const n=bars.length; if(n<
   for(const z of fv){ z.end=Math.min(n-1,z.i1+ZONE_MAX); for(let j=z.i1+1;j<=z.end;j++){ const b=bars[j]; if(z.bull?b.low<=z.bot:b.high>=z.top){ z.end=j; z.filled=true; break; } } }
   for(const z of ob){ z.end=Math.min(n-1,z.from+ZONE_MAX); for(let j=z.from+1;j<=z.end;j++){ const b=bars[j]; if(z.bull?b.close<z.bot:b.close>z.top){ z.end=j; z.filled=true; break; } } }
   return {fv,ob}; }
-function drawZones(P,pw,h){ if(!P.zones) return; const {ctx,series}=P; const lr=P.chart.timeScale().getVisibleLogicalRange(); if(!lr) return; const bw=pw/(lr.to-lr.from);
-  const up=css("--bull"),dn=css("--dn");
-  if($("#lyFVG").checked) for(const z of P.zones.fv){ if(z.end<lr.from-1||z.i0>lr.to+1) continue;
-    const x1=(z.i0+0.55-lr.from)*bw, x2=(z.end+0.45-lr.from)*bw; const y1=series.priceToCoordinate(z.top), y2=series.priceToCoordinate(z.bot); if(y1==null||y2==null) continue;
-    ctx.globalAlpha=z.filled?.08:.18; ctx.fillStyle=z.bull?up:dn; ctx.fillRect(x1,y1,x2-x1,Math.max(1,y2-y1)); ctx.globalAlpha=1;
-    if(bw>4&&!z.filled){ ctx.fillStyle=z.bull?up:dn; ctx.font="600 10px "+css("--body"); ctx.fillText("FVG",x1+3,y1+11); } }
-  if($("#lyOB").checked) for(const z of P.zones.ob){ if(z.end<lr.from-1||z.i0>lr.to+1) continue;
-    const x1=(z.i0-0.45-lr.from)*bw, x2=(z.end+0.45-lr.from)*bw; const y1=series.priceToCoordinate(z.top), y2=series.priceToCoordinate(z.bot); if(y1==null||y2==null) continue;
-    const col=z.bull?"#3A9AD9":"#F28C28"; ctx.globalAlpha=z.filled?.08:.22; ctx.fillStyle=col; ctx.fillRect(x1,y1,x2-x1,Math.max(1,y2-y1)); ctx.globalAlpha=z.filled?.35:.9; ctx.strokeStyle=col; ctx.lineWidth=1; ctx.setLineDash([]); ctx.strokeRect(x1+.5,y1+.5,x2-x1-1,Math.max(1,y2-y1)-1); ctx.globalAlpha=1;
-    if(bw>4&&!z.filled){ ctx.fillStyle=col; ctx.font="600 10px "+css("--body"); ctx.fillText(z.bull?"OB ▲":"OB ▼",x1+3,z.bull?y2+11:y1-4); } } }
+let ZSRC=["own"]; try{ const s=JSON.parse(localStorage.getItem("zsrc")||"null"); if(s) ZSRC=s; }catch(e){}
+const zonesTF={};   // zones computed on other timeframes, keyed by tf; cleared whenever m1 changes
+function zonesFor(tf){ const bars=applyDayFilter(loaded[tf]||resample(tf),tf); const c=zonesTF[tf]; if(c&&c.n===bars.length) return c.z;
+  const z=scanZones(bars); const sec=secOf(tf); const toT=(zz,isOB)=>({...zz,t0:bars[zz.i0].time,t1:bars[zz.end].time+sec,tf}); const out={fv:z.fv.map(x=>toT(x)),ob:z.ob.map(x=>toT(x,true))}; zonesTF[tf]={n:bars.length,z:out}; return out; }
+function zoneRect(P,ctx,series,x1,x2,top,bot,col,filled,label,labelBelow){ const y1=series.priceToCoordinate(top), y2=series.priceToCoordinate(bot); if(y1==null||y2==null) return; const hh=Math.max(1,y2-y1);
+  ctx.globalAlpha=filled?.07:.16; ctx.fillStyle=col; ctx.fillRect(x1,y1,x2-x1,hh); ctx.globalAlpha=filled?.3:.85; ctx.strokeStyle=col; ctx.lineWidth=1; ctx.setLineDash([]); ctx.strokeRect(x1+.5,y1+.5,x2-x1-1,hh-1);
+  const ym=(y1+y2)/2; ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(x1,ym); ctx.lineTo(x2,ym); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;   // midline (consequent encroachment / mean threshold)
+  if(label&&x2-x1>26&&!filled){ ctx.fillStyle=col; ctx.font="600 10px "+css("--body"); ctx.fillText(label,x1+3,labelBelow?y2+11:y1-4); } }
+function drawZones(P,pw,h){ const {ctx,series}=P; const lr=P.chart.timeScale().getVisibleLogicalRange(); if(!lr) return; const bw=pw/(lr.to-lr.from);
+  const up=css("--bull"),dn=css("--dn"), showF=$("#lyFVG").checked, showO=$("#lyOB").checked; if(!showF&&!showO) return;
+  // this pane's own zones (index based)
+  if(ZSRC.includes("own")&&P.zones){
+    if(showF) for(const z of P.zones.fv){ if(z.end<lr.from-1||z.i0>lr.to+1) continue; zoneRect(P,ctx,series,(z.i0+0.55-lr.from)*bw,(z.end+0.45-lr.from)*bw,z.top,z.bot,z.bull?up:dn,z.filled,"FVG",false); }
+    if(showO) for(const z of P.zones.ob){ if(z.end<lr.from-1||z.i0>lr.to+1) continue; zoneRect(P,ctx,series,(z.i0-0.45-lr.from)*bw,(z.end+0.45-lr.from)*bw,z.top,z.bot,z.bull?"#3A9AD9":"#F28C28",z.filled,z.bull?"OB ▲":"OB ▼",z.bull); } }
+  // zones from other timeframes, placed by time
+  const vr=P.visibleNY(); if(!vr) return;
+  for(const tf of ZSRC){ if(tf==="own"||tf===P.tf) continue; const Z=zonesFor(tf);
+    if(showF) for(const z of Z.fv){ if(z.t1<vr.from||z.t0>vr.to) continue; const x1=P.xOf(z.t0), x2=P.xOf(z.t1); if(x1==null||x2==null) continue; zoneRect(P,ctx,series,x1,x2,z.top,z.bot,z.bull?up:dn,z.filled,"FVG "+tf,false); }
+    if(showO) for(const z of Z.ob){ if(z.t1<vr.from||z.t0>vr.to) continue; const x1=P.xOf(z.t0), x2=P.xOf(z.t1); if(x1==null||x2==null) continue; zoneRect(P,ctx,series,x1,x2,z.top,z.bot,z.bull?"#3A9AD9":"#F28C28",z.filled,(z.bull?"OB ▲ ":"OB ▼ ")+tf,z.bull); } } }
+$$(".zsrc").forEach(c=>{ c.checked=ZSRC.includes(c.value); c.onchange=()=>{ ZSRC=$$(".zsrc").filter(x=>x.checked).map(x=>x.value); try{localStorage.setItem("zsrc",JSON.stringify(ZSRC));}catch(e){} drawAll(); }; });
 
 /* ---------- overlays ---------- */
 function drawOverlays(P){
@@ -605,16 +619,17 @@ function hitTest(P,x,y){ let best=null,bd=8;
   return best; }
 function attachDrawing(P){
   const ov=P.ov; let hover=null, move=null;
-  const nearReplay=x=>{ if(!R.on||R.idx<=0) return false; const xr=P.xOf(m1[R.idx-1].time); return xr!=null&&Math.abs(x-xr)<8; };
+  const nearReplay=x=>{ if(!R.on||R.idx<=0) return false; const xr=P.xOf(m1[R.idx-1].time); return xr!=null&&Math.abs(x-xr)<14; };
   let rpDrag=false;
   P.el.addEventListener("mousemove",ev=>{ if(tool!=="cursor"||move||rpDrag) return; const {x,y}=paneXY(P,ev); hover=hitTest(P,x,y); const rp=nearReplay(x);
     ov.style.pointerEvents=(hover||rp)?"auto":""; ov.style.cursor=rp?"col-resize":hover?(hover.part==="body"?"move":"pointer"):""; },true);
   ov.addEventListener("mousedown",ev=>{ if(tool==="cursor"&&nearReplay(paneXY(P,ev).x)){ ev.preventDefault(); ev.stopImmediatePropagation(); rpPause(); rpDrag=true; ov.style.pointerEvents="auto"; rpDragStart(); } },true);
+  ov.addEventListener("pointerdown",ev=>{ try{ ov.setPointerCapture(ev.pointerId); }catch(e){} });
   let rpPending=null, lastX=0;
   ov.addEventListener("mousemove",ev=>{ if(!rpDrag) return; const {x}=paneXY(P,ev); lastX=x; const t=timeAtX(P,x); if(t==null) return;
     rpPending=t; if(!P._rpRaf){ P._rpRaf=requestAnimationFrame(()=>{ P._rpRaf=null; const tt=rpPending; let lo=0,hi=m1.length; while(lo<hi){const mid=(lo+hi)>>1; if(m1[mid].time<=tt) lo=mid+1; else hi=mid;} rpSeekDrag(Math.max(1,lo)); }); } });
   const rpEnd=()=>{ if(rpDrag){ rpDrag=false; ov.style.pointerEvents=""; rpDragEnd(P,lastX); } };
-  ov.addEventListener("mouseup",rpEnd); ov.addEventListener("mouseleave",rpEnd);
+  ov.addEventListener("mouseup",rpEnd); ov.addEventListener("pointerup",rpEnd); ov.addEventListener("pointercancel",rpEnd);
   ov.addEventListener("mousedown",ev=>{ setActive(panes.indexOf(P));
     const {x,y}=paneXY(P,ev); const t=timeAtX(P,x), p=P.series.coordinateToPrice(y); if(t==null||p==null) return;
     if(tool==="cursor"){ const h=hitTest(P,x,y); if(!h) return; ev.preventDefault(); const s=DR[h.i]; move={h,s,t0:t,p0:p,orig:{...s}}; ov.style.pointerEvents="auto"; return; }
@@ -632,7 +647,7 @@ function attachDrawing(P){
     if(!dragging||dragging.P!==P) return; dragging.s.t2=t; dragging.s.p2=p; requestAnimationFrame(P.draw); });
   const finish=()=>{ if(move){ move=null; saveDR(); ov.style.pointerEvents=""; drawAll(); return; }
     if(!dragging||dragging.P!==P) return; const s=dragging.s; dragging=null; if(Math.abs(s.t2-s.t1)>0||Math.abs(s.p2-s.p1)>0){DR.push(s);saveDR();} drawAll(); };
-  ov.addEventListener("mouseup",finish); ov.addEventListener("mouseleave",finish);
+  ov.addEventListener("mouseup",finish); ov.addEventListener("pointerup",finish); ov.addEventListener("pointercancel",finish);
 }
 const drawAll=()=>panes.forEach(p=>requestAnimationFrame(p.draw));
 setInterval(drawAll,250);
@@ -738,7 +753,7 @@ function remember(bar){ if(bar.src==="td"||bar.src==="mx") DB.dirty.set(bar.time
 function insertBars(bars,overwrite){ // merge bars into m1 (sorted, unique). overwrite=true lets a better source replace a worse one (csv/mx > td > live).
   if(!bars.length) return 0; const have=new Map(m1.map(b=>[b.time,b])); let added=0, replaced=0; const rank={csv:3,mx:3,td:1,live:0};
   for(const b of bars){ const ex=have.get(b.time); if(!ex){ have.set(b.time,b); added++; } else if(overwrite&&(rank[b.src]||0)>(rank[ex.src]||0)){ have.set(b.time,b); replaced++; } }
-  if(added||replaced){ m1=[...have.values()].sort((a,b)=>a.time-b.time); cache={}; stitchAll(); for(const k in liqCache) delete liqCache[k]; for(const k in sessCache) delete sessCache[k]; }
+  if(added||replaced){ m1=[...have.values()].sort((a,b)=>a.time-b.time); cache={}; stitchAll(); for(const k in liqCache) delete liqCache[k]; for(const k in sessCache) delete sessCache[k]; for(const k in zonesTF) delete zonesTF[k]; }
   return added+replaced; }
 async function restoreSaved(){ const rows=(await idbLoad()).filter(r=>r.src==="td"||r.src==="mx"); const n=insertBars(rows,true); if(n) $("#range").textContent+=`, +${n.toLocaleString()} saved bars`; return n; }
 // export merged 1-minute data
@@ -816,7 +831,7 @@ const nyNow=ms=>utcToNy(Math.floor(ms/1000));
 function setStatus(msg,cls){$("#fhStatus").textContent=msg; $("#dot").className="dot "+(cls||"");}
 function pushMinute(bar){ bar.src="live"; const last=m1[m1.length-1]; if(last&&bar.time<last.time) return;
   if(last&&bar.time===last.time){last.high=Math.max(last.high,bar.high);last.low=Math.min(last.low,bar.low);last.close=bar.close;} else m1.push(bar);
-  remember(m1[m1.length-1]); cache={}; if(R.on) return; const src=m1[m1.length-1]; panes.forEach(P=>P.applyMinute(src)); }
+  remember(m1[m1.length-1]); cache={}; for(const k in zonesTF) delete zonesTF[k]; if(R.on) return; const src=m1[m1.length-1]; panes.forEach(P=>P.applyMinute(src)); }
 const fetchT=(url,ms=15000)=>{const c=new AbortController(); const id=setTimeout(()=>c.abort(),ms); return fetch(url,{signal:c.signal}).finally(()=>clearTimeout(id));};
 async function backfill(key){
   const last=m1[m1.length-1]; let from=nyToUtc(last.time)+60, to=Math.floor(Date.now()/1000); if(to-from<60) return "up to date"; let got=0;
