@@ -111,7 +111,9 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-radius:3px;padding
   <label><input type="checkbox" class="ly" id="lyPD"> prev day H/L</label>
   <label><input type="checkbox" class="ly" id="lyMid"> midnight NY</label>
   <label><input type="checkbox" class="ly" id="lyClock"> clock findings</label>
-  <label><input type="checkbox" class="ly" id="lyPat" checked> 3/4-candle reversals</label><span class="sep"></span>
+  <label><input type="checkbox" class="ly" id="lyPat" checked> 3/4-candle reversals</label>
+  <label><input type="checkbox" class="ly" id="lyFVG" checked> fair value gaps</label>
+  <label><input type="checkbox" class="ly" id="lyOB" checked> order blocks</label><span class="sep"></span>
   <span>Data</span>
   <label style="grid-column:1/-1"><input type="checkbox" id="stitch" checked> stitch thin candles (open = previous close) for Twelve Data candles and for data before Sep 2025</label>
   <span>Camarilla</span>
@@ -308,12 +310,18 @@ function makePane(tf){
     const vr=chart.timeScale().getVisibleRange(); series.setData(P.bars.map(b=>disp(b,P.tf))); const N=140;
     if(keep&&vr){const c=secOf(tf)>=86400?(vr.from+vr.to)/2:unshift((vr.from+vr.to)/2); let i=P.bars.findIndex(b=>b.time>=c); if(i<0)i=P.bars.length-1; let to=Math.min(i+N/2,P.bars.length+5); chart.timeScale().setVisibleLogicalRange({from:to-N,to});}
     else chart.timeScale().setVisibleLogicalRange({from:P.bars.length-N,to:P.bars.length+5});
-    if(P.last()) P.legend(disp(P.last(),P.tf)); P.indicators(); P.patterns=PAT_SKIP.has(tf)?[]:scanPatterns(P.bars); if(R.on) P.follow(); requestAnimationFrame(P.draw); if(panes[active]===P) syncTFButtons(); };
+    if(P.last()) P.legend(disp(P.last(),P.tf)); P.indicators(); P.patterns=PAT_SKIP.has(tf)?[]:scanPatterns(P.bars); P.zones=scanZones(P.bars); if(R.on) P.follow(); requestAnimationFrame(P.draw); if(panes[active]===P) syncTFButtons(); };
   P.applyMinute=r0=>{ if(!dayVisible(r0.time)) return; const r=viewBar(r0); const f=bucketFn(P.tf), k=f(r.time), lb=P.last();
     let newBar=false;
     if(lb&&lb.time===k){lb.high=Math.max(lb.high,r.high);lb.low=Math.min(lb.low,r.low);lb.close=r.close;}
     else if(lb&&k<lb.time) return; else { P.bars.push(P.tf==="1m"?r:{time:k,open:r.open,high:r.high,low:r.low,close:r.close}); newBar=true; }
     series.update(disp(P.last(),P.tf)); P.legend(disp(P.last(),P.tf)); P.indicatorsLive(newBar);
+    if(newBar&&P.zones){ const n=P.bars.length; const nb=P.bars[n-2]; // the bar that just completed
+      for(const z of P.zones.fv) if(!z.filled&&z.end>=n-3){ z.end=Math.min(n-1,z.i1+ZONE_MAX); if(z.bull?nb.low<=z.bot:nb.high>=z.top){ z.end=n-2; z.filled=true; } }
+      for(const z of P.zones.ob) if(!z.filled&&z.end>=n-3){ z.end=Math.min(n-1,z.from+ZONE_MAX); if(z.bull?nb.close<z.bot:nb.close>z.top){ z.end=n-2; z.filled=true; } }
+      const w=Math.min(n-1,40); const off=n-1-w; const fresh=scanZones(P.bars.slice(off,n-1),w-1);
+      for(const z of fresh.fv){ const q={...z,i0:z.i0+off,i1:z.i1+off,end:z.end+off}; if(!P.zones.fv.some(o=>o.i1===q.i1)) P.zones.fv.push(q); }
+      for(const z of fresh.ob){ const q={...z,i0:z.i0+off,i1:z.i1+off,from:z.from+off,end:z.end+off}; if(!P.zones.ob.some(o=>o.from===q.from)) P.zones.ob.push(q); } }
     if(newBar&&P.patterns&&!PAT_SKIP.has(P.tf)){ const n=P.bars.length, w=Math.min(n-1,PAT_LOOKBACK+10); if(w>8){ const off=n-1-w; const fresh=scanPatterns(P.bars.slice(off,n-1),w-1).map(p=>({...p,i0:p.i0+off,i1:p.i1+off})); for(const p of fresh) if(!P.patterns.some(q=>q.i1===p.i1)) P.patterns.push(p); } } };
   P.follow=()=>{ const lr=chart.timeScale().getVisibleLogicalRange(); if(!lr) return; const w=lr.to-lr.from, n=P.bars.length-1; if(n>lr.to-2||n<lr.from) chart.timeScale().setVisibleLogicalRange({from:n-w*0.75,to:n+w*0.25}); };
   P.xOf=time=>{ const bars=P.dataTimes||P.bars; let lo=0,hi=bars.length-1; while(lo<hi){const m=(lo+hi)>>1; if(bars[m].time<time) lo=m+1; else hi=m;}
@@ -456,6 +464,40 @@ function drawPatterns(P,pw,h){
     if(p.swept!=null){ const ys=series.priceToCoordinate(p.swept); if(ys!=null){ ctx.strokeStyle=css("--liq")||"#8B7CF0"; ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(x1-bw*2,ys); ctx.lineTo(x2,ys); ctx.stroke(); ctx.setLineDash([]); } }
     if(bw>5){ ctx.fillStyle=col; ctx.font="600 10px "+css("--body"); ctx.fillText(p.n+(p.bull?"▲ ":"▼ ")+(bw>9?(p.sweptName||"")+(p.extra?" +"+p.extra:""):""),x1+3,p.bull?y2+14:y1-6); } } }
 
+/* ---------- fair value gaps & order blocks ----------
+FVG: 3 candles where candle 1 and candle 3 do not overlap. Bullish gap = c1.high..c3.low (c3.low > c1.high); bearish = c3.high..c1.low.
+     Only gaps at least 0.35 x ATR(14) tall are kept. A gap stays drawn until price trades fully through it (filled), max 150 bars.
+OB:  the last opposite-colour candle before the displacement that made the gap: bullish OB = last red candle (open..low),
+     bearish OB = last green candle (open..high); only behind a displacement candle with body >= 0.8 x ATR. Drawn until a close through its far side, max 150 bars. */
+const ZONE_MAX=150;   // bars a zone is extended if never filled
+function scanZones(bars,fromIdx){ const fv=[], ob=[]; const n=bars.length; if(n<16) return {fv,ob};
+  const tr=[]; for(let i=1;i<n;i++) tr.push(Math.max(bars[i].high-bars[i].low,Math.abs(bars[i].high-bars[i-1].close),Math.abs(bars[i].low-bars[i-1].close)));
+  const atr=i=>{ let s=0,c=0; for(let k=Math.max(0,i-15);k<i-1&&k<tr.length;k++){ s+=tr[k]; c++; } return c?s/c:0; };
+  for(let i=Math.max(16,fromIdx||0);i<n;i++){ const c1=bars[i-2],c2=bars[i-1],c3=bars[i]; const a=atr(i); if(!a) continue;
+    let g=null;
+    if(c3.low>c1.high&&c3.low-c1.high>=0.35*a) g={i0:i-2,i1:i,top:c3.low,bot:c1.high,bull:true};
+    else if(c1.low>c3.high&&c1.low-c3.high>=0.35*a) g={i0:i-2,i1:i,top:c1.low,bot:c3.high,bull:false};
+    if(!g) continue; fv.push(g);
+    // order block only behind a real displacement (middle candle body >= 0.8 x ATR): last opposite-colour candle before it
+    if(Math.abs(c2.close-c2.open)<0.8*a) continue;
+    for(let k=i-2;k>=Math.max(0,i-4);k--){ const b=bars[k];
+      if(g.bull&&b.close<b.open){ ob.push({i0:k,i1:k,top:b.open,bot:b.low,bull:true,from:i}); break; }
+      if(!g.bull&&b.close>b.open){ ob.push({i0:k,i1:k,top:b.high,bot:b.open,bull:false,from:i}); break; } } }
+  // lifetimes: FVG ends when fully filled; OB ends when a close goes through its far side
+  for(const z of fv){ z.end=Math.min(n-1,z.i1+ZONE_MAX); for(let j=z.i1+1;j<=z.end;j++){ const b=bars[j]; if(z.bull?b.low<=z.bot:b.high>=z.top){ z.end=j; z.filled=true; break; } } }
+  for(const z of ob){ z.end=Math.min(n-1,z.from+ZONE_MAX); for(let j=z.from+1;j<=z.end;j++){ const b=bars[j]; if(z.bull?b.close<z.bot:b.close>z.top){ z.end=j; z.filled=true; break; } } }
+  return {fv,ob}; }
+function drawZones(P,pw,h){ if(!P.zones) return; const {ctx,series}=P; const lr=P.chart.timeScale().getVisibleLogicalRange(); if(!lr) return; const bw=pw/(lr.to-lr.from);
+  const up=css("--bull"),dn=css("--dn");
+  if($("#lyFVG").checked) for(const z of P.zones.fv){ if(z.end<lr.from-1||z.i0>lr.to+1) continue;
+    const x1=(z.i0+0.55-lr.from)*bw, x2=(z.end+0.45-lr.from)*bw; const y1=series.priceToCoordinate(z.top), y2=series.priceToCoordinate(z.bot); if(y1==null||y2==null) continue;
+    ctx.globalAlpha=z.filled?.08:.18; ctx.fillStyle=z.bull?up:dn; ctx.fillRect(x1,y1,x2-x1,Math.max(1,y2-y1)); ctx.globalAlpha=1;
+    if(bw>4&&!z.filled){ ctx.fillStyle=z.bull?up:dn; ctx.font="600 10px "+css("--body"); ctx.fillText("FVG",x1+3,y1+11); } }
+  if($("#lyOB").checked) for(const z of P.zones.ob){ if(z.end<lr.from-1||z.i0>lr.to+1) continue;
+    const x1=(z.i0-0.45-lr.from)*bw, x2=(z.end+0.45-lr.from)*bw; const y1=series.priceToCoordinate(z.top), y2=series.priceToCoordinate(z.bot); if(y1==null||y2==null) continue;
+    const col=z.bull?"#3A9AD9":"#F28C28"; ctx.globalAlpha=z.filled?.08:.22; ctx.fillStyle=col; ctx.fillRect(x1,y1,x2-x1,Math.max(1,y2-y1)); ctx.globalAlpha=z.filled?.35:.9; ctx.strokeStyle=col; ctx.lineWidth=1; ctx.setLineDash([]); ctx.strokeRect(x1+.5,y1+.5,x2-x1-1,Math.max(1,y2-y1)-1); ctx.globalAlpha=1;
+    if(bw>4&&!z.filled){ ctx.fillStyle=col; ctx.font="600 10px "+css("--body"); ctx.fillText(z.bull?"OB ▲":"OB ▼",x1+3,z.bull?y2+11:y1-4); } } }
+
 /* ---------- overlays ---------- */
 function drawOverlays(P){
   const {ctx,ov,el,chart,series}=P; const w=el.clientWidth, h=el.clientHeight, dpr=window.devicePixelRatio||1;
@@ -500,6 +542,7 @@ function drawOverlays(P){
     }
   }
   if(vr) drawCamarilla(P,vr,h,pw);
+  drawZones(P,pw,h);
   drawPatterns(P,pw,h);
   drawUser(P);
   if(R.on&&R.idx>0){ const xr=P.xOf(m1[R.idx-1].time); if(xr!=null&&xr>=0&&xr<=pw){ ctx.save(); ctx.strokeStyle=css("--acc"); ctx.lineWidth=2; ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(xr+.5,0); ctx.lineTo(xr+.5,h); ctx.stroke();
@@ -666,7 +709,7 @@ function rpSeekDrag(n){ R.idx=Math.max(1,Math.min(m1.length,n)); const cur=m1[R.
       else data.push({time:big?bar.time:shift(bar.time)}); }
     Q.bars=Q.full.filter(x=>x.time<kcur); if(last&&last.time===kcur) Q.bars.push(last);
     Q.dataTimes=[]; for(let i=i0;i<Q.full.length&&Q.full[i].time<=b;i++) Q.dataTimes.push({time:Q.full[i].time});
-    Q.series.setData(data); if(last) Q.legend(disp(last,Q.tf)); Q.patterns=PAT_SKIP.has(Q.tf)?[]:scanPatterns(Q.bars).map(p=>({...p,i0:p.i0-i0,i1:p.i1-i0}));
+    Q.series.setData(data); if(last) Q.legend(disp(last,Q.tf)); Q.patterns=PAT_SKIP.has(Q.tf)?[]:scanPatterns(Q.bars).map(p=>({...p,i0:p.i0-i0,i1:p.i1-i0})); const zz=scanZones(Q.bars); Q.zones={fv:zz.fv.map(z=>({...z,i0:z.i0-i0,i1:z.i1-i0,end:z.end-i0})),ob:zz.ob.map(z=>({...z,i0:z.i0-i0,i1:z.i1-i0,from:z.from-i0,end:z.end-i0}))};
     Q.chart.timeScale().setVisibleRange({from:big?Q.win.va:shift(Q.win.va),to:big?Q.win.vb:shift(Q.win.vb)}); requestAnimationFrame(Q.draw); });
   rpUpdateNow(); }
 function rpDragEnd(P,x){ // restore normal replay data; keep the cursor line under the mouse
@@ -742,9 +785,13 @@ async function mxCatchup(reason){
     const n=insertBars(bars,true); bars.forEach(remember); if(n&&!R.on) panes.forEach(P=>P.setTF(P.tf,true)); if(n) console.log("massive catch-up",n,"candles");
   }catch(e){ console.log("massive catch-up failed",e.message); } finally{ mxBusy=false; } }
 // Catch-up 2: Twelve Data, today only (Massive's free plan has no same-day data). Never touches the forming minute.
-let catchupBusy=false, lastCatchup=0;
+let catchupBusy=false, lastCatchup=0, tdBackoff=45000;   // grows when a call returns nothing, so an unfillable gap doesn't burn the daily allowance
+const tdBudget=()=>{ try{ const day=new Date().toISOString().slice(0,10); const s=JSON.parse(localStorage.getItem("tdCalls")||"{}"); return s.day===day?s.n:0; }catch(e){ return 0; } };
+const tdCount=()=>{ try{ const day=new Date().toISOString().slice(0,10); const s=JSON.parse(localStorage.getItem("tdCalls")||"{}"); localStorage.setItem("tdCalls",JSON.stringify({day,n:(s.day===day?s.n:0)+1})); }catch(e){} };
 async function tdCatchup(reason){
-  const key=$("#tdKey").value.trim(); if(!key||catchupBusy) return; if(Date.now()-lastCatchup<45000&&reason!=="connect"&&reason!=="boot") return; catchupBusy=true; lastCatchup=Date.now();
+  const key=$("#tdKey").value.trim(); if(!key||catchupBusy) return; const forced=reason==="connect"||reason==="boot";
+  if(!forced&&Date.now()-lastCatchup<tdBackoff) return; if(tdBudget()>=150){ if(forced) setStatus("Twelve Data daily budget for this page reached (150 calls); resets at 05:30 IST",""); return; }
+  catchupBusy=true; lastCatchup=Date.now();
   try{ const nowNY=utcToNy(Math.floor(Date.now()/1000)); const curMin=Math.floor(nowNY/60)*60; const todayStart=Math.floor(nowNY/86400)*86400;
     const from=Math.max(CSV_END||0,todayStart-6*3600), to=curMin-120;
     const have=new Set(m1.filter(b=>b.time>=from&&b.time<=to&&b.src!=="live").map(b=>b.time)); let missing=0;
@@ -752,10 +799,11 @@ async function tdCatchup(reason){
     if(!missing) return;
     let bars=[]; for(let a=from;a<=to;a+=5000*60){ const b2=Math.min(to,a+4999*60);
       const r=await fetchT(`https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1min&start_date=${encodeURIComponent(fmt(a+60)+":00")}&end_date=${encodeURIComponent(fmt(b2+60)+":00")}&timezone=America/New_York&outputsize=5000&format=JSON&apikey=${encodeURIComponent(key)}`,20000);
-      const j=await r.json(); if(j.status==="error"){ console.log("twelve data:",j.message); break; }
+      tdCount(); const j=await r.json(); if(j.status==="error"){ console.log("twelve data:",j.message); if(/credits/i.test(j.message||"")) tdBackoff=30*60*1000; break; }
       bars=bars.concat((j.values||[]).map(v=>({time:Date.UTC(+v.datetime.slice(0,4),+v.datetime.slice(5,7)-1,+v.datetime.slice(8,10),+v.datetime.slice(11,13),+v.datetime.slice(14,16))/1000-60,open:+v.open,high:+v.high,low:+v.low,close:+v.close,src:"td"}))); }
     bars=bars.filter(b=>{const d=new Date(b.time*1000).getUTCDay(),h=new Date(b.time*1000).getUTCHours(); return !(d===6||(d===5&&h>=17)||(d===0&&h<18));});
     const n=insertBars(bars,true); bars.forEach(remember); if(n&&!R.on) panes.forEach(P=>P.setTF(P.tf,true));
+    tdBackoff=n?45000:Math.min(30*60*1000,Math.max(tdBackoff*3,10*60*1000));   // 45 s after a useful call; 10 → 30 min after empty ones
     if(n){ console.log("td catch-up",reason,n); if(!LV.ws||LV.ws.readyState!==1) setStatus("today filled to "+fmt(shift(m1[m1.length-1].time))+" via Twelve Data (live feed not connected)",""); }
   }catch(e){ console.log("td catch-up failed",e.message); } finally{ catchupBusy=false; } }
 setInterval(()=>{ if($("#mxKey").value.trim()) mxCatchup("timer"); if($("#tdKey").value.trim()) tdCatchup("timer"); },2*60*1000);
