@@ -30,9 +30,13 @@ def closed(t_ny):   # Fri 17:00 -> Sun 18:00 NY
 def main():
     if not KEY: print("MASSIVE_KEY is not set", flush=True); sys.exit(1)
     rows = load_csv(); last = datetime.strptime(max(rows), "%Y-%m-%d %H:%M").replace(tzinfo=NY)
-    start = (last.astimezone(timezone.utc) - timedelta(hours=1)).date(); end = datetime.now(timezone.utc).date() + timedelta(days=1)
-    print(f"CSV ends {last:%Y-%m-%d %H:%M} NY; fetching {start} -> {end}", flush=True)
+    # Massive: start from the last CLEAN (mx) row, so Twelve Data rows get replaced; end yesterday (UTC), the free plan has no same-day data
+    last_mx_key = max(k for k, v in rows.items() if v[5] == "mx")
+    last_mx = datetime.strptime(last_mx_key, "%Y-%m-%d %H:%M").replace(tzinfo=NY)
+    start = (last_mx.astimezone(timezone.utc) - timedelta(hours=1)).date(); end = datetime.now(timezone.utc).date() - timedelta(days=1)
+    print(f"CSV ends {last:%Y-%m-%d %H:%M} NY (clean Massive data to {last_mx:%Y-%m-%d %H:%M}); Massive range {start} -> {end}", flush=True)
     added = 0; cur = start; calls = 0; massive_ok = True
+    if start > end: print("Massive: nothing new to fetch yet (free plan publishes a day after it closes)", flush=True)
     while cur <= end:
         to = min(end, cur + timedelta(days=20))
         url = f"https://api.massive.com/v2/aggs/ticker/C:XAUUSD/range/1/minute/{cur}/{to}?adjusted=true&sort=asc&limit=50000&apiKey={KEY}"
