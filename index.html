@@ -38,7 +38,7 @@ label{display:flex;align-items:center;gap:5px;cursor:pointer}
 .pane{position:relative;min-width:0;min-height:0;background:var(--bg);outline:2px solid transparent;outline-offset:-2px}
 .pane.active{outline-color:rgba(233,185,48,.55)}
 .pane .ch{position:absolute;inset:0}
-.pane canvas.ov{position:absolute;inset:0;pointer-events:none;width:100%;height:100%;z-index:3}
+.pane canvas.ov{position:absolute;inset:0;pointer-events:none;width:100%;height:100%;z-index:3;touch-action:none}
 body.drawing .pane canvas.ov{pointer-events:auto;cursor:crosshair}body.drawing.erase .pane canvas.ov{cursor:not-allowed}
 input[type=color]{width:28px;height:24px;padding:0;border:1px solid var(--line);background:none;border-radius:4px;cursor:pointer}
 .pane .lg{position:absolute;top:6px;left:10px;z-index:4;font:12px var(--mono);color:var(--ink);pointer-events:none;background:color-mix(in srgb,var(--panel) 75%,transparent);padding:3px 7px;border-radius:4px;line-height:1.5}
@@ -618,36 +618,34 @@ function hitTest(P,x,y){ let best=null,bd=8;
     const d=distToShape(P,s,x,y); if(d<bd){bd=d;best={i,part:"body"};} });
   return best; }
 function attachDrawing(P){
-  const ov=P.ov; let hover=null, move=null;
+  const ov=P.ov; let hover=null, move=null, rpDrag=false, rpPending=null, lastX=0, activeId=null;
   const nearReplay=x=>{ if(!R.on||R.idx<=0) return false; const xr=P.xOf(m1[R.idx-1].time); return xr!=null&&Math.abs(x-xr)<14; };
-  let rpDrag=false;
-  P.el.addEventListener("mousemove",ev=>{ if(tool!=="cursor"||move||rpDrag) return; const {x,y}=paneXY(P,ev); hover=hitTest(P,x,y); const rp=nearReplay(x);
+  P.el.addEventListener("pointermove",ev=>{ if(tool!=="cursor"||move||rpDrag||dragging) return; const {x,y}=paneXY(P,ev); hover=hitTest(P,x,y); const rp=nearReplay(x);
     ov.style.pointerEvents=(hover||rp)?"auto":""; ov.style.cursor=rp?"col-resize":hover?(hover.part==="body"?"move":"pointer"):""; },true);
-  ov.addEventListener("mousedown",ev=>{ if(tool==="cursor"&&nearReplay(paneXY(P,ev).x)){ ev.preventDefault(); ev.stopImmediatePropagation(); rpPause(); rpDrag=true; ov.style.pointerEvents="auto"; rpDragStart(); } },true);
-  ov.addEventListener("pointerdown",ev=>{ try{ ov.setPointerCapture(ev.pointerId); }catch(e){} });
-  let rpPending=null, lastX=0;
-  ov.addEventListener("mousemove",ev=>{ if(!rpDrag) return; const {x}=paneXY(P,ev); lastX=x; const t=timeAtX(P,x); if(t==null) return;
-    rpPending=t; if(!P._rpRaf){ P._rpRaf=requestAnimationFrame(()=>{ P._rpRaf=null; const tt=rpPending; let lo=0,hi=m1.length; while(lo<hi){const mid=(lo+hi)>>1; if(m1[mid].time<=tt) lo=mid+1; else hi=mid;} rpSeekDrag(Math.max(1,lo)); }); } });
-  const rpEnd=()=>{ if(rpDrag){ rpDrag=false; ov.style.pointerEvents=""; rpDragEnd(P,lastX); } };
-  ov.addEventListener("mouseup",rpEnd); ov.addEventListener("pointerup",rpEnd); ov.addEventListener("pointercancel",rpEnd);
-  ov.addEventListener("mousedown",ev=>{ setActive(panes.indexOf(P));
+  ov.addEventListener("pointerdown",ev=>{ if(ev.button!==undefined&&ev.button!==0) return; setActive(panes.indexOf(P));
     const {x,y}=paneXY(P,ev); const t=timeAtX(P,x), p=P.series.coordinateToPrice(y); if(t==null||p==null) return;
-    if(tool==="cursor"){ const h=hitTest(P,x,y); if(!h) return; ev.preventDefault(); const s=DR[h.i]; move={h,s,t0:t,p0:p,orig:{...s}}; ov.style.pointerEvents="auto"; return; }
-    ev.preventDefault();
+    const grab=()=>{ activeId=ev.pointerId; try{ ov.setPointerCapture(ev.pointerId); }catch(e){} ov.style.pointerEvents="auto"; ev.preventDefault(); };
+    if(tool==="cursor"){
+      if(nearReplay(x)){ grab(); rpPause(); rpDrag=true; rpDragStart(); return; }
+      const h=hitTest(P,x,y); if(!h) return; grab(); const s=DR[h.i]; move={h,s,t0:t,p0:p,orig:{...s}}; return; }
+    grab();
     if(tool==="erase"){ const h=hitTest(P,x,y); if(h){DR.splice(h.i,1);saveDR();drawAll();} return; }
     const c=$("#drawColor").value;
     if(tool==="hline"){ DR.push({type:"hline",p1:p,c}); saveDR(); drawAll(); return; }
     dragging={P,s:{type:tool,t1:t,p1:p,t2:t,p2:p,c}}; });
-  ov.addEventListener("mousemove",ev=>{ const {x,y}=paneXY(P,ev); const t=timeAtX(P,x), p=P.series.coordinateToPrice(y); if(t==null||p==null) return;
+  ov.addEventListener("pointermove",ev=>{ if(activeId!==null&&ev.pointerId!==activeId) return; const {x,y}=paneXY(P,ev); lastX=x; const t=timeAtX(P,x), p=P.series.coordinateToPrice(y); if(t==null||p==null) return;
+    if(rpDrag){ rpPending=t; if(!P._rpRaf){ P._rpRaf=requestAnimationFrame(()=>{ P._rpRaf=null; const tt=rpPending; let lo=0,hi=m1.length; while(lo<hi){const mid=(lo+hi)>>1; if(m1[mid].time<=tt) lo=mid+1; else hi=mid;} rpSeekDrag(Math.max(1,lo)); }); } return; }
     if(move){ const {s,orig,h}=move, dt=t-move.t0, dp=p-move.p0;
       if(s.type==="hline") s.p1=orig.p1+dp;
       else if(h.part==="a"){s.t1=orig.t1+dt;s.p1=orig.p1+dp;} else if(h.part==="b"){s.t2=orig.t2+dt;s.p2=orig.p2+dp;}
       else {s.t1=orig.t1+dt;s.t2=orig.t2+dt;s.p1=orig.p1+dp;s.p2=orig.p2+dp;}
       drawAll(); return; }
-    if(!dragging||dragging.P!==P) return; dragging.s.t2=t; dragging.s.p2=p; requestAnimationFrame(P.draw); });
-  const finish=()=>{ if(move){ move=null; saveDR(); ov.style.pointerEvents=""; drawAll(); return; }
-    if(!dragging||dragging.P!==P) return; const s=dragging.s; dragging=null; if(Math.abs(s.t2-s.t1)>0||Math.abs(s.p2-s.p1)>0){DR.push(s);saveDR();} drawAll(); };
-  ov.addEventListener("mouseup",finish); ov.addEventListener("pointerup",finish); ov.addEventListener("pointercancel",finish);
+    if(dragging&&dragging.P===P){ dragging.s.t2=t; dragging.s.p2=p; requestAnimationFrame(P.draw); } });
+  const finish=ev=>{ if(activeId!==null&&ev&&ev.pointerId!==undefined&&ev.pointerId!==activeId) return; activeId=null; try{ if(ev&&ev.pointerId!==undefined) ov.releasePointerCapture(ev.pointerId); }catch(e){}
+    if(rpDrag){ rpDrag=false; ov.style.pointerEvents=""; rpDragEnd(P,lastX); return; }
+    if(move){ move=null; saveDR(); ov.style.pointerEvents=""; drawAll(); return; }
+    if(dragging&&dragging.P===P){ const s=dragging.s; dragging=null; if(Math.abs(s.t2-s.t1)>0||Math.abs(s.p2-s.p1)>0){DR.push(s);saveDR();} drawAll(); } };
+  ov.addEventListener("pointerup",finish); ov.addEventListener("pointercancel",finish);
 }
 const drawAll=()=>panes.forEach(p=>requestAnimationFrame(p.draw));
 setInterval(drawAll,250);
