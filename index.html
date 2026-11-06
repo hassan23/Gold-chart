@@ -68,7 +68,7 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-radius:3px;padding
 </head>
 <body>
 <header>
-  <div class="sym">XAU/USD<small id="range">spot gold</small><small style="opacity:.6"> v2026-11-07</small></div>
+  <div class="sym">XAU/USD<small id="range">spot gold</small><small id="build" style="opacity:.75;font-family:var(--mono)" title="Build time of this index.html. Hover shows the time the server last modified the file you are viewing."> build 2026-11-06 19:51 UTC</small></div>
   <div class="tfs" id="tfs"></div>
   <div class="sp"></div>
   <span>Layout</span><div class="seg" id="layout"><button data-n="1" class="on">1</button><button data-n="2">2</button><button data-n="4">4</button></div>
@@ -126,7 +126,7 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-radius:3px;padding
   <label><input type="checkbox" class="ly" id="lyCamM"> monthly</label>
   </div></div>
   <span class="sep"></span>
-  <div class="seg" id="tools"><button data-tool="cursor" class="on" title="Cursor (Esc)">✥</button><button data-tool="line" title="Trend line: drag">╱</button><button data-tool="hline" title="Horizontal line: click">—</button><button data-tool="rect" title="Area: drag">▭</button><button data-tool="erase" title="Click a drawing to remove it">⌫</button></div>
+  <div class="seg" id="tools"><button data-tool="cursor" class="on" title="Cursor (Esc)">✥</button><button data-tool="line" title="Trend line: drag, or click start then click end">╱</button><button data-tool="hline" title="Horizontal line: click">—</button><button data-tool="rect" title="Area: drag, or click one corner then click the other">▭</button><button data-tool="erase" title="Click a drawing to remove it">⌫</button></div>
   <input type="color" id="drawColor" value="#E9B930" title="Drawing colour">
   <button class="b" id="drawClear" type="button" title="Remove all drawings">Clear</button>
   <span class="sp"></span>
@@ -582,7 +582,7 @@ let tool="cursor", dragging=null;
 function setTool(name){ tool=name; $$("#tools button").forEach(b=>b.classList.toggle("on",b.dataset.tool===name)); document.body.classList.toggle("drawing",name!=="cursor"); document.body.classList.toggle("erase",name==="erase"); }
 $$("#tools button").forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
 $("#drawClear").onclick=()=>{ if(DR.length&&confirm("Remove all "+DR.length+" drawings?")){DR=[];saveDR();drawAll();} };
-document.addEventListener("keydown",e=>{ if(e.key==="Escape") setTool("cursor"); });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ dragging=null; setTool("cursor"); drawAll(); } });
 function paneXY(P,ev){ const r=P.ov.getBoundingClientRect(); return {x:ev.clientX-r.left,y:ev.clientY-r.top}; }
 function timeAtX(P,x){ // pixel -> NY time via bar index (fractional, extrapolates past the ends)
   const B=P.dataTimes||P.bars; const lr=P.chart.timeScale().getVisibleLogicalRange(); if(!lr||!B.length) return null;
@@ -597,9 +597,9 @@ function drawShape(P,s,temp){
   if(s.type==="hline"){ ctx.beginPath(); ctx.moveTo(0,y1); ctx.lineTo(pw,y1); ctx.stroke(); ctx.fillText(s.p1.toFixed(2),4,y1-4); }
   else { const x1=P.xOf(s.t1), x2=P.xOf(s.t2); if(x1==null||x2==null||y2==null){ctx.restore();return;}
     if(s.type==="line"){ ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); }
-    if(!temp){ ctx.fillRect(x1-3,y1-3,6,6); ctx.fillRect(x2-3,y2-3,6,6); }
     else { ctx.globalAlpha=.18; ctx.fillRect(Math.min(x1,x2),Math.min(y1,y2),Math.abs(x2-x1),Math.abs(y2-y1)); ctx.globalAlpha=1; ctx.strokeRect(Math.min(x1,x2)+.5,Math.min(y1,y2)+.5,Math.abs(x2-x1),Math.abs(y2-y1));
-      ctx.fillText(Math.max(s.p1,s.p2).toFixed(2),Math.min(x1,x2)+4,Math.min(y1,y2)-4); ctx.fillText(Math.min(s.p1,s.p2).toFixed(2),Math.min(x1,x2)+4,Math.max(y1,y2)+13); } }
+      ctx.fillText(Math.max(s.p1,s.p2).toFixed(2),Math.min(x1,x2)+4,Math.min(y1,y2)-4); ctx.fillText(Math.min(s.p1,s.p2).toFixed(2),Math.min(x1,x2)+4,Math.max(y1,y2)+13); }
+    if(!temp){ ctx.fillRect(x1-3,y1-3,6,6); ctx.fillRect(x2-3,y2-3,6,6); } }
   ctx.restore();
 }
 function drawUser(P){ for(const s of DR) drawShape(P,s,false); if(dragging&&dragging.P===P) drawShape(P,dragging.s,true); }
@@ -629,11 +629,12 @@ function attachDrawing(P){
     if(tool==="cursor"){
       if(nearReplay(x)){ grab(); rpPause(); rpDrag=true; rpDragStart(); return; }
       const h=hitTest(P,x,y); if(!h) return; grab(); const s=DR[h.i]; move={h,s,t0:t,p0:p,orig:{...s}}; return; }
+    if(dragging&&dragging.P===P&&dragging.clickMode){ const s=dragging.s; s.t2=t; s.p2=p; dragging=null; if(Math.abs(s.t2-s.t1)>0||Math.abs(s.p2-s.p1)>0){DR.push(s);saveDR();} drawAll(); ev.preventDefault(); return; }   // second click of click-move-click
     grab();
     if(tool==="erase"){ const h=hitTest(P,x,y); if(h){DR.splice(h.i,1);saveDR();drawAll();} return; }
     const c=$("#drawColor").value;
     if(tool==="hline"){ DR.push({type:"hline",p1:p,c}); saveDR(); drawAll(); return; }
-    dragging={P,s:{type:tool,t1:t,p1:p,t2:t,p2:p,c}}; });
+    dragging={P,s:{type:tool,t1:t,p1:p,t2:t,p2:p,c},x0:x,y0:y,moved:false,clickMode:false}; });
   const onMove=ev=>{ if(activeId!==null&&ev.pointerId!==undefined&&ev.pointerId!==activeId) return; const {x,y}=paneXY(P,ev); lastX=x; const t=timeAtX(P,x), p=P.series.coordinateToPrice(y); if(t==null||p==null) return;
     if(rpDrag){ rpPending=t; if(!P._rpRaf){ P._rpRaf=requestAnimationFrame(()=>{ P._rpRaf=null; const tt=rpPending; let lo=0,hi=m1.length; while(lo<hi){const mid=(lo+hi)>>1; if(m1[mid].time<=tt) lo=mid+1; else hi=mid;} rpSeekDrag(Math.max(1,lo)); }); } return; }
     if(move){ const {s,orig,h}=move, dt=t-move.t0, dp=p-move.p0;
@@ -641,12 +642,13 @@ function attachDrawing(P){
       else if(h.part==="a"){s.t1=orig.t1+dt;s.p1=orig.p1+dp;} else if(h.part==="b"){s.t2=orig.t2+dt;s.p2=orig.p2+dp;}
       else {s.t1=orig.t1+dt;s.t2=orig.t2+dt;s.p1=orig.p1+dp;s.p2=orig.p2+dp;}
       drawAll(); return; }
-    if(dragging&&dragging.P===P){ dragging.s.t2=t; dragging.s.p2=p; dragging.moved=true; requestAnimationFrame(P.draw); } };
+    if(dragging&&dragging.P===P){ dragging.s.t2=t; dragging.s.p2=p; if(Math.hypot(x-dragging.x0,y-dragging.y0)>4) dragging.moved=true; requestAnimationFrame(P.draw); } };
   ov.addEventListener("pointermove",onMove);
   function finish(ev){ window.removeEventListener("pointermove",onMove,true); window.removeEventListener("pointerup",finish,true); window.removeEventListener("mousemove",onMove,true); window.removeEventListener("mouseup",finish,true); if(activeId!==null&&ev&&ev.pointerId!==undefined&&ev.pointerId!==activeId) return; activeId=null; try{ if(ev&&ev.pointerId!==undefined) ov.releasePointerCapture(ev.pointerId); }catch(e){}
     if(rpDrag){ rpDrag=false; ov.style.pointerEvents=""; rpDragEnd(P,lastX); return; }
     if(move){ move=null; saveDR(); ov.style.pointerEvents=""; drawAll(); return; }
-    if(dragging&&dragging.P===P){ const s=dragging.s, moved=dragging.moved; dragging=null; if(moved&&(Math.abs(s.t2-s.t1)>0||Math.abs(s.p2-s.p1)>0)){DR.push(s);saveDR();} drawAll(); } }
+    if(dragging&&dragging.P===P){ if(!dragging.moved){ dragging.clickMode=true; requestAnimationFrame(P.draw); return; }   // click without drag: wait for the second click
+      const s=dragging.s; dragging=null; if(Math.abs(s.t2-s.t1)>0||Math.abs(s.p2-s.p1)>0){DR.push(s);saveDR();} drawAll(); } }
   ov.addEventListener("pointerup",finish); ov.addEventListener("pointercancel",finish);
 }
 const drawAll=()=>panes.forEach(p=>requestAnimationFrame(p.draw));
@@ -870,6 +872,7 @@ $("#fhConnect").onclick=connect; $("#fhDisconnect").onclick=disconnect; $("#fhKe
 window.goldChart={pushMinute,panes,resample:tf=>resample(tf),shift,unshift,R,m1:()=>m1};
 
 /* ---------- boot ---------- */
+try{ $("#build").title="This file was built 2026-11-06 19:51 UTC. The copy you are viewing was last modified on the server at: "+document.lastModified; }catch(e){}
 try{
   let text=null; const tried=[];
   for(const u of [DATA_URL,"data/XAUUSD_1m_hybrid.csv","XAUUSD_1m.csv","data/xauusd_1m.csv"]){
